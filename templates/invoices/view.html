@@ -1,0 +1,71 @@
+{% extends 'base.html' %}
+{% block title %}Invoice {{ invoice.invoice_number }}{% endblock %}
+{% block content %}
+<div class="d-print-none mb-3">
+  <a href="{{ url_for('invoices.list_invoices') }}" class="btn btn-secondary">Back to Invoices</a>
+  <button onclick="window.print()" class="btn btn-primary">Print</button>
+  <a href="{{ url_for('invoices.download_invoice_pdf', invoice_id=invoice.id) }}" class="btn btn-outline-danger">Download PDF</a>
+</div>
+<div class="card">
+  <div class="card-body">
+    <h2 class="text-center">TAX INVOICE</h2>
+    <div class="row mb-2">
+      <div class="col-md-6">
+        <strong>Invoice #:</strong> {{ invoice.invoice_number }}<br>
+        <strong>Date:</strong> {{ invoice.date.strftime('%d-%m-%Y') }}<br>
+      </div>
+      <div class="col-md-6">
+        <strong>Customer:</strong> {{ invoice.customer_name }}<br>
+        <strong>GSTIN:</strong> {{ invoice.customer_gstin }}<br>
+        <strong>Address:</strong> {{ invoice.customer_address }}<br>
+      </div>
+    </div>
+    <table class="table table-bordered">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Product</th>
+          <th>HSN</th>
+          <th>Qty</th>
+          <th>Price</th>
+          <th>GST %</th>
+          <th>CGST</th>
+          <th>SGST</th>
+          <th>Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td>{{ item.product.name }}</td>
+          <td>{{ item.product.hsn_code }}</td>
+          <td>{{ item.quantity }}</td>
+          <td>{{ item.price }}</td>
+          <td>{{ item.gst_percent }}</td>
+          <td>{{ item.cgst }}</td>
+          <td>{{ item.sgst }}</td>
+          <td>{{ item.total }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr>
+          <th colspan="8" class="text-end">Grand Total</th>
+          <th>{{ invoice.total }}</th>
+        </tr>
+        <tr>
+          <th colspan="6" class="text-end">Total CGST</th>
+          <th>{{ invoice.cgst }}</th>
+          <th colspan="2"></th>
+        </tr>
+        <tr>
+          <th colspan="7" class="text-end">Total SGST</th>
+          <th>{{ invoice.sgst }}</th>
+          <th></th>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+{% endblock %}

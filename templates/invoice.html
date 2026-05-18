@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Invoice #{{ sale.id }}</title>
+</head>
+<body>
+    <h1>Invoice</h1>
+    <p><strong>Invoice ID:</strong> {{ sale.id }}</p>
+    <p><strong>Date:</strong> {{ sale.date }}</p>
+    <p><strong>Product Name:</strong> {{ sale.product_name }}</p>
+    <p><strong>Quantity:</strong> {{ sale.quantity }}</p>
+    <p><strong>Price:</strong> {{ sale.price }}</p>
+    <p><strong>GST:</strong> {{ sale.gst }}</p>
+    <p><strong>Total:</strong> {{ sale.quantity * sale.price + sale.gst }}</p>
+    <hr>
+    <a href="/">Back to Dashboard</a>
+</body>
+</html>

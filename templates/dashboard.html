@@ -1,0 +1,210 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+
+<div class="d-flex align-items-center mb-2 gap-2">
+    <svg width="36" height="36" fill="currentColor" class="bi bi-bar-chart-fill text-primary me-2"><use xlink:href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/bootstrap-icons.svg#bar-chart-fill"/></svg>
+    <h1 class="mb-0 fw-bold">Sales Dashboard</h1>
+</div>
+<div class="mb-3">
+    <span class="badge bg-secondary fs-6"><i class="bi bi-arrow-clockwise me-1"></i>Auto-refresh every 30 seconds</span>
+</div>
+<script>
+    setTimeout(function() { window.location.reload(); }, 30000);
+</script>
+<div class="mb-4 d-flex flex-wrap gap-2">
+    <a href="/products/?add=1" class="btn btn-success btn-sm rounded-pill"><i class="bi bi-plus-circle me-1"></i> Add Product</a>
+    <a href="/products" class="btn btn-info btn-sm rounded-pill"><i class="bi bi-box-seam me-1"></i> List Products</a>
+    <a href="/customers/" class="btn btn-warning btn-sm rounded-pill"><i class="bi bi-people-fill me-1"></i> Customers</a>
+</div>
+<form method="get" class="row g-2 align-items-end mb-4">
+    <div class="col-auto">
+        <label for="from_date" class="form-label mb-0">From:</label>
+        <input type="date" id="from_date" name="from_date" class="form-control form-control-sm rounded-pill" value="{{ from_date }}">
+    </div>
+    <div class="col-auto">
+        <label for="to_date" class="form-label mb-0">To:</label>
+        <input type="date" id="to_date" name="to_date" class="form-control form-control-sm rounded-pill" value="{{ to_date }}">
+    </div>
+    <div class="col-auto">
+        <button type="submit" class="btn btn-primary btn-sm rounded-pill"><i class="bi bi-funnel me-1"></i> Apply</button>
+    </div>
+</form>
+
+
+
+
+    <div class="row g-5 align-items-stretch w-100" style="max-width: 100vw;">
+        <div class="col-lg-7 d-flex flex-column gap-4" style="min-width: 0;">
+            <div class="card shadow border-0 flex-fill">
+                <div class="card-header bg-primary text-white fw-semibold fs-5 py-3 d-flex align-items-center">
+                    <i class="bi bi-receipt-cutoff me-2"></i> Sales ({{ from_date }} to {{ to_date }})
+                </div>
+                <div class="card-body p-0" style="max-height: 500px; min-height: 300px; overflow-y: auto;">
+                    <table class="table table-hover mb-0 align-middle">
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                <th>ID</th>
+                                <th>Product Name</th>
+                                <th>Qty</th>
+                                <th>Price</th>
+                                <th>GST</th>
+                                <th>Total</th>
+                                <th>Customer</th>
+                                <th>Invoice</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for sale in sales[:10] %}
+                            <tr>
+                                <td>{{ sale.id }}</td>
+                                <td>{{ sale.product_name }}</td>
+                                <td>{{ sale.quantity }}</td>
+                                <td>{{ sale.price }}</td>
+                                <td>{{ sale.gst|round(2) }}</td>
+                                <td>{{ sale.total|round(2) }}</td>
+                                <td>{{ sale.customer_name }}</td>
+                                <td><a href="/invoice/{{ sale.invoice_id }}" class="btn btn-outline-primary btn-sm rounded-pill"><i class="bi bi-file-earmark-text"></i></a></td>
+                            </tr>
+                            {% endfor %}
+                            {% if sales|length == 0 %}
+                            <tr><td colspan="8" class="text-center">No sales in this period.</td></tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                    {% if sales|length > 10 %}
+                    <div class="text-center py-2 bg-light border-top small">Showing 10 of {{ sales|length }} sales</div>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="card shadow border-0 flex-fill mt-4">
+                <div class="card-header bg-success text-white fw-semibold fs-5 py-3 d-flex align-items-center">
+                    <i class="bi bi-box-seam me-2"></i> Top 5 Products
+                </div>
+                <div class="card-body p-0" style="max-height: 210px; min-height: 120px; overflow-y: auto;">
+                    <table class="table table-hover mb-0 align-middle">
+                        <thead class="table-light sticky-top">
+                            <tr><th>Product</th><th>Qty Sold</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for prod in top_products[:5] %}
+                            <tr>
+                                <td><i class="bi bi-cube me-1 text-success"></i> {{ prod.name }}</td>
+                                <td>{{ prod.qty }}</td>
+                            </tr>
+                            {% endfor %}
+                            {% if top_products|length == 0 %}
+                            <tr><td colspan="2" class="text-center">No data</td></tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-5 d-flex flex-column gap-4" style="min-width: 0;">
+            <div class="card shadow border-0 flex-fill">
+                <div class="card-header bg-info text-white fw-semibold fs-5 py-3 d-flex align-items-center">
+                    <i class="bi bi-graph-up-arrow me-2"></i> Summary
+                </div>
+                <div class="card-body pb-2">
+                    <ul class="list-group list-group-flush mb-3">
+                        <li class="list-group-item d-flex justify-content-between align-items-center border-0 ps-0">
+                            <span><i class="bi bi-currency-rupee text-success me-1"></i> Total Sales</span>
+                            <span class="fw-bold text-success">₹{{ total_sales|round(2) }}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center border-0 ps-0">
+                            <span><i class="bi bi-percent text-warning me-1"></i> Total GST</span>
+                            <span class="fw-bold text-warning">₹{{ total_gst|round(2) }}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center border-0 ps-0">
+                            <span><i class="bi bi-receipt me-1"></i> Total Invoices</span>
+                            <span class="fw-bold">{{ total_invoices }}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center border-0 ps-0">
+                            <span><i class="bi bi-people-fill me-1"></i> Total Customers</span>
+                            <span class="fw-bold">{{ total_customers }}</span>
+                        </li>
+                    </ul>
+                    <!-- Auto-refresh badge moved to top of dashboard -->
+                </div>
+            </div>
+            <div class="card shadow border-0 flex-fill mt-4">
+                <div class="card-header bg-warning text-dark fw-semibold fs-5 py-3 d-flex align-items-center">
+                    <i class="bi bi-person-badge me-2"></i> Top 5 Customers
+                </div>
+                <div class="card-body p-0" style="max-height: 210px; min-height: 120px; overflow-y: auto;">
+                    <table class="table table-hover mb-0 align-middle">
+                        <thead class="table-light sticky-top">
+                            <tr><th>Customer</th><th>Total Sales</th><th>Invoices</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for cust in top_customers %}
+                            <tr>
+                                <td><i class="bi bi-person-circle me-1 text-warning"></i> {{ cust.customer_name }}</td>
+                                <td>{{ cust.total_sales|round(2) }}</td>
+                                <td>{{ cust.invoice_count }}</td>
+                            </tr>
+                            {% endfor %}
+                            {% if top_customers|length == 0 %}
+                            <tr><td colspan="3" class="text-center">No data</td></tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <style>
+        body {
+            background: #f8f9fa;
+        }
+        .container {
+            max-width: 98vw !important;
+            width: 100vw !important;
+            padding-left: 2vw !important;
+            padding-right: 2vw !important;
+        }
+        .row {
+            margin-left: 0 !important;
+            margin-right: 0 !important;
+        }
+        .card {
+            border-radius: 1.25rem;
+            width: 100%;
+        }
+        .card-header {
+            font-size: 1.15rem;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            border-bottom: none;
+        }
+        .table th, .table td {
+            vertical-align: middle;
+        }
+        .sticky-top {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+        .list-group-item {
+            background: transparent;
+        }
+        .mt-4 {
+            margin-top: 2rem !important;
+        }
+        .rounded-pill {
+            border-radius: 50rem !important;
+        }
+        @media (max-width: 991.98px) {
+            .col-lg-7, .col-lg-5 {
+                flex: 0 0 100%;
+                max-width: 100%;
+            }
+            .container {
+                padding-left: 0.5rem !important;
+                padding-right: 0.5rem !important;
+            }
+        }
+    </style>
+    {% endblock %}

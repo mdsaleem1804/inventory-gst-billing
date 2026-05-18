@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+{% block title %}Sales Report{% endblock %}
+{% block content %}
+<h2>Sales Report</h2>
+<form method="get" class="row g-3 mb-3">
+  <div class="col-md-3">
+    <label class="form-label">From</label>
+    <input type="date" name="from_date" class="form-control" value="{{ from_date }}">
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">To</label>
+    <input type="date" name="to_date" class="form-control" value="{{ to_date }}">
+  </div>
+  <div class="col-md-3 align-self-end">
+    <button type="submit" class="btn btn-primary">Filter</button>
+  </div>
+</form>
+<table class="table table-bordered table-hover">
+  <thead class="table-light">
+    <tr>
+      <th>Date</th>
+      <th>Invoice #</th>
+      <th>Customer</th>
+      <th>Total</th>
+      <th>CGST</th>
+      <th>SGST</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for inv in invoices %}
+    <tr>
+      <td>{{ inv.date.strftime('%Y-%m-%d') }}</td>
+      <td>{{ inv.invoice_number }}</td>
+      <td>{{ inv.customer_name }}</td>
+      <td>{{ inv.total }}</td>
+      <td>{{ inv.cgst }}</td>
+      <td>{{ inv.sgst }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" class="text-center">No records found.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

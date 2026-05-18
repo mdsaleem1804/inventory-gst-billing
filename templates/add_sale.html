@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Add Sale</title>
+</head>
+<body>
+    <h1>Add New Sale</h1>
+    <form method="post">
+        <label>Product Name: <input type="text" name="product_name" required></label><br>
+        <label>Quantity: <input type="number" name="quantity" required></label><br>
+        <label>Price: <input type="number" step="0.01" name="price" required></label><br>
+        <label>GST: <input type="number" step="0.01" name="gst" required></label><br>
+        <label>Date: <input type="date" name="date" value="{{ today }}"></label><br>
+        <input type="submit" value="Add Sale">
+    </form>
+    <a href="/">Back to Dashboard</a>
+</body>
+</html>

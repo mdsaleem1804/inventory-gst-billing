@@ -1,0 +1,68 @@
+{% extends 'base.html' %}
+{% block title %}Products{% endblock %}
+{% block content %}
+<h2>Products</h2>
+<div class="card mb-4">
+  <div class="card-body">
+    <form method="post" action="{{ url_for('products.crud_products') }}">
+      <input type="hidden" name="id" value="{{ form_product.id if form_product else '' }}">
+      <div class="row g-3 align-items-end">
+        <div class="col-md-3">
+          <label class="form-label">Product Name</label>
+          <input type="text" name="name" class="form-control" value="{{ form_product.name if form_product else '' }}" required>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">HSN Code</label>
+          <input type="text" name="hsn_code" class="form-control" value="{{ form_product.hsn_code if form_product else '' }}" required>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">GST %</label>
+          <input type="number" name="gst_percent" class="form-control" step="0.01" value="{{ form_product.gst_percent if form_product else '' }}" required>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Price</label>
+          <input type="number" name="price" class="form-control" step="0.01" value="{{ form_product.price if form_product else '' }}" required>
+        </div>
+        <div class="col-md-3">
+          <button type="submit" class="btn btn-primary">{{ 'Update' if form_product else 'Add' }} Product</button>
+          {% if form_product %}
+          <a href="{{ url_for('products.crud_products') }}" class="btn btn-secondary">Cancel</a>
+          {% endif %}
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+<table class="table table-bordered table-hover">
+  <thead class="table-light">
+    <tr>
+      <th>ID</th>
+      <th>Name</th>
+      <th>HSN Code</th>
+      <th>GST %</th>
+      <th>Price</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for product in products %}
+    <tr>
+      <td>{{ product.id }}</td>
+      <td>{{ product.name }}</td>
+      <td>{{ product.hsn_code }}</td>
+      <td>{{ product.gst_percent }}</td>
+      <td>{{ product.price }}</td>
+      <td>
+        <a href="{{ url_for('products.crud_products', edit_id=product.id) }}" class="btn btn-sm btn-info">Edit</a>
+        <form method="post" action="{{ url_for('products.crud_products') }}" style="display:inline;">
+          <input type="hidden" name="delete_id" value="{{ product.id }}">
+          <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete this product?');">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" class="text-center">No products found.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

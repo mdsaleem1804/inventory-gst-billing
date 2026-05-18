@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Sales List</title>
+</head>
+<body>
+    <h1>Sales for {{ date }}</h1>
+    <form method="get">
+        <label>Select Date: <input type="date" name="date" value="{{ date }}">
+        <input type="submit" value="Filter"></label>
+    </form>
+    <table border="1">
+        <tr>
+            <th>ID</th>
+            <th>Product Name</th>
+            <th>Quantity</th>
+            <th>Price</th>
+            <th>GST</th>
+            <th>Total</th>
+            <th>Invoice</th>
+        </tr>
+        {% for sale in sales %}
+        <tr>
+            <td>{{ sale.id }}</td>
+            <td>{{ sale.product_name }}</td>
+            <td>{{ sale.quantity }}</td>
+            <td>{{ sale.price }}</td>
+            <td>{{ sale.gst }}</td>
+            <td>{{ sale.quantity * sale.price + sale.gst }}</td>
+            <td><a href="/invoice/{{ sale.id }}">Invoice</a></td>
+        </tr>
+        {% endfor %}
+    </table>
+    <a href="/">Back to Dashboard</a>
+</body>
+</html>

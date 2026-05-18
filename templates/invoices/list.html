@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% block title %}Invoices{% endblock %}
+{% block content %}
+<h2>Invoices</h2>
+<a href="{{ url_for('invoices.add_invoice') }}" class="btn btn-success mb-3">Create Invoice</a>
+<a href="{{ url_for('invoices.export_invoices_excel') }}" class="btn btn-outline-success mb-3 ms-2">Export Excel</a>
+<table class="table table-bordered table-hover">
+  <thead class="table-light">
+    <tr>
+      <th>Invoice #</th>
+      <th>Date</th>
+      <th>Customer</th>
+      <th>Total</th>
+      <th>CGST</th>
+      <th>SGST</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for invoice in invoices %}
+    <tr>
+      <td><a href="{{ url_for('invoices.view_invoice', invoice_id=invoice.id) }}">{{ invoice.invoice_number }}</a></td>
+      <td>{{ invoice.date.strftime('%Y-%m-%d') }}</td>
+      <td>{{ invoice.customer_name }}</td>
+      <td>{{ invoice.total }}</td>
+      <td>{{ invoice.cgst }}</td>
+      <td>{{ invoice.sgst }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" class="text-center">No invoices found.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
