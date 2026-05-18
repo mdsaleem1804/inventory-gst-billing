@@ -65,3 +65,17 @@ class Customer(db.Model, AuditMixin):
     name = db.Column(db.String(100), nullable=False)
     gstin = db.Column(db.String(20))
     address = db.Column(db.String(200))
+
+
+# Company model for storing company information
+class Company(db.Model):
+    __tablename__ = 'company'
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(128), nullable=False)
+    header = db.Column(db.String(256), nullable=True)
+    gst_number = db.Column(db.String(32), nullable=False)
+    phone_number = db.Column(db.String(32), nullable=True)
+    address = db.Column(db.String(256), nullable=True)
+    logo = db.Column(db.String(256), nullable=True)  # Path to logo image
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

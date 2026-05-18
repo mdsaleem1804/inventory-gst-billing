@@ -4,21 +4,30 @@ from app import app
 from models import db, User, Product, Customer, Invoice, InvoiceItem
 from werkzeug.security import generate_password_hash
 
-FIRST_NAMES = ["John", "Jane", "Alex", "Priya", "Rahul", "Sara", "David", "Amit", "Emily", "Vikram", "Anu", "Ravi", "Sneha", "Kumar", "Meena", "Suresh", "Lata", "Arun", "Divya", "Manoj"]
-LAST_NAMES = ["Sharma", "Patel", "Singh", "Kumar", "Reddy", "Nair", "Gupta", "Das", "Mehta", "Joshi", "Bose", "Chopra", "Verma", "Rao", "Iyer", "Jain", "Kapoor", "Mishra", "Saxena", "Yadav"]
-ADDRESSES = ["Chennai", "Mumbai", "Delhi", "Bangalore", "Hyderabad", "Pune", "Kolkata", "Ahmedabad", "Jaipur", "Lucknow"]
-
 PRODUCTS = [
-    {"name": "Pen", "hsn_code": "9608", "gst_percent": 12, "price": 10},
-    {"name": "Notebook", "hsn_code": "4820", "gst_percent": 12, "price": 50},
-    {"name": "Pencil", "hsn_code": "9609", "gst_percent": 5, "price": 5},
-    {"name": "Eraser", "hsn_code": "4016", "gst_percent": 5, "price": 3},
-    {"name": "Bag", "hsn_code": "4202", "gst_percent": 18, "price": 300},
-    {"name": "Ruler", "hsn_code": "9017", "gst_percent": 12, "price": 15},
-    {"name": "Sharpener", "hsn_code": "8214", "gst_percent": 5, "price": 7},
-    {"name": "Marker", "hsn_code": "9608", "gst_percent": 12, "price": 25},
-    {"name": "File", "hsn_code": "4820", "gst_percent": 12, "price": 40},
-    {"name": "Stapler", "hsn_code": "8205", "gst_percent": 18, "price": 60}
+    {"name": "ஆச்சி மட்டன் மசாலா (50g)", "hsn_code": "09109100", "gst_percent": 5, "price": 18.57},
+    {"name": "ஆச்சி சிக்கன் மசாலா (50g)", "hsn_code": "09109101", "gst_percent": 5, "price": 18.57},
+    {"name": "ஆச்சி பிரியாணி மசாலா (100g)", "hsn_code": "09109102", "gst_percent": 5, "price": 36.00},
+    {"name": "ஆச்சி மிளகாய் தூள் (200g)", "hsn_code": "09042211", "gst_percent": 5, "price": 62.50},
+    {"name": "ஆச்சி மஞ்சள் தூள் (100g)", "hsn_code": "09109103", "gst_percent": 5, "price": 18.00},
+    {"name": "ஆச்சி மல்லித்தூள் (100g)", "hsn_code": "09109104", "gst_percent": 5, "price": 20.00},
+    {"name": "ஆச்சி கரம் மசாலா (50g)", "hsn_code": "09109105", "gst_percent": 5, "price": 19.00},
+    {"name": "ஆச்சி சாம்பார் தூள் (200g)", "hsn_code": "09109106", "gst_percent": 5, "price": 60.00},
+    {"name": "ஆச்சி ரசம் தூள் (100g)", "hsn_code": "09109107", "gst_percent": 5, "price": 18.00},
+    {"name": "ஆச்சி கறிவேப்பிலை பொடி (50g)", "hsn_code": "09109108", "gst_percent": 5, "price": 22.00},
+]
+
+ADDRESSES = [
+    "Palayamkottai, Tirunelveli",
+    "Melapalayam, Tirunelveli",
+    "Vannarapettai, Tirunelveli",
+    "Tenkasi Road, Tirunelveli",
+    "Veeravanallur, Tirunelveli",
+    "Cheranmahadevi, Tirunelveli",
+    "Ambasamudram, Tirunelveli",
+    "Manur, Tirunelveli",
+    "Sankaran Kovil, Tirunelveli",
+    "Alangulam, Tirunelveli"
 ]
 
 def random_gstin():
@@ -46,11 +55,20 @@ with app.app_context():
 
     # Add customers if table is empty
     if Customer.query.count() == 0:
-        for i in range(40):
-            name = random_name()
-            gstin = random_gstin()
-            address = random_address()
-            db.session.add(Customer(name=name, gstin=gstin, address=address))
+        tirunelveli_customers = [
+            {"name": "S. Kumar", "gstin": random_gstin(), "address": "Palayamkottai, Tirunelveli"},
+            {"name": "Meena Reddy", "gstin": random_gstin(), "address": "Melapalayam, Tirunelveli"},
+            {"name": "Mallika", "gstin": random_gstin(), "address": "Vannarapettai, Tirunelveli"},
+            {"name": "R. Prakash", "gstin": random_gstin(), "address": "Tenkasi Road, Tirunelveli"},
+            {"name": "A. Suresh", "gstin": random_gstin(), "address": "Veeravanallur, Tirunelveli"},
+            {"name": "Latha", "gstin": random_gstin(), "address": "Cheranmahadevi, Tirunelveli"},
+            {"name": "Arun Kumar", "gstin": random_gstin(), "address": "Ambasamudram, Tirunelveli"},
+            {"name": "Divya", "gstin": random_gstin(), "address": "Manur, Tirunelveli"},
+            {"name": "Manoj", "gstin": random_gstin(), "address": "Sankaran Kovil, Tirunelveli"},
+            {"name": "Sneha", "gstin": random_gstin(), "address": "Alangulam, Tirunelveli"},
+        ]
+        for cust in tirunelveli_customers:
+            db.session.add(Customer(**cust))
         db.session.commit()
         print('Customers seeded.')
 

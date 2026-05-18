@@ -51,7 +51,7 @@
       <td>{{ product.name }}</td>
       <td>{{ product.hsn_code }}</td>
       <td>{{ product.gst_percent }}</td>
-      <td>{{ product.price }}</td>
+      <td class="text-end">{{ product.price|indian_currency }}</td>
       <td>
         <a href="{{ url_for('products.crud_products', edit_id=product.id) }}" class="btn btn-sm btn-info">Edit</a>
         <form method="post" action="{{ url_for('products.crud_products') }}" style="display:inline;">

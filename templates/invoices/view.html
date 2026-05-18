@@ -1,71 +1,138 @@
 {% extends 'base.html' %}
 {% block title %}Invoice {{ invoice.invoice_number }}{% endblock %}
 {% block content %}
+<style>
+  .page-title { display: none !important; }
+</style>
 <div class="d-print-none mb-3">
-  <a href="{{ url_for('invoices.list_invoices') }}" class="btn btn-secondary">Back to Invoices</a>
+  <a href="{{ url_for('invoices.crud_invoices') }}" class="btn btn-secondary">Back to Invoices</a>
   <button onclick="window.print()" class="btn btn-primary">Print</button>
   <a href="{{ url_for('invoices.download_invoice_pdf', invoice_id=invoice.id) }}" class="btn btn-outline-danger">Download PDF</a>
 </div>
-<div class="card">
-  <div class="card-body">
-    <h2 class="text-center">TAX INVOICE</h2>
-    <div class="row mb-2">
-      <div class="col-md-6">
-        <strong>Invoice #:</strong> {{ invoice.invoice_number }}<br>
-        <strong>Date:</strong> {{ invoice.date.strftime('%d-%m-%Y') }}<br>
-      </div>
-      <div class="col-md-6">
-        <strong>Customer:</strong> {{ invoice.customer_name }}<br>
-        <strong>GSTIN:</strong> {{ invoice.customer_gstin }}<br>
-        <strong>Address:</strong> {{ invoice.customer_address }}<br>
-      </div>
+<div class="invoice-box" style="width:210mm;min-height:297mm;max-width:210mm;margin:auto;border:1px solid #333;padding:18px 18px 8px 18px;font-size:15px;line-height:1.3;font-family:'Arial',sans-serif;box-sizing:border-box;page-break-after:always;background:#fff;">
+  <div class="text-center mb-2">
+    <h3 style="margin-bottom:0;font-weight:bold;">{{ company.title if company else '' }}</h3>
+    <div>{{ company.header if company else '' }}</div>
+    <div>
+      GSTIN: {{ company.gst_number if company else '' }}
+      {% if company.phone_number %}&nbsp; Contact: {{ company.phone_number }}{% endif %}
     </div>
-    <table class="table table-bordered">
-      <thead>
-        <tr>
-          <th>#</th>
-          <th>Product</th>
-          <th>HSN</th>
-          <th>Qty</th>
-          <th>Price</th>
-          <th>GST %</th>
-          <th>CGST</th>
-          <th>SGST</th>
-          <th>Total</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for item in items %}
-        <tr>
-          <td>{{ loop.index }}</td>
-          <td>{{ item.product.name }}</td>
-          <td>{{ item.product.hsn_code }}</td>
-          <td>{{ item.quantity }}</td>
-          <td>{{ item.price }}</td>
-          <td>{{ item.gst_percent }}</td>
-          <td>{{ item.cgst }}</td>
-          <td>{{ item.sgst }}</td>
-          <td>{{ item.total }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-      <tfoot>
-        <tr>
-          <th colspan="8" class="text-end">Grand Total</th>
-          <th>{{ invoice.total }}</th>
-        </tr>
-        <tr>
-          <th colspan="6" class="text-end">Total CGST</th>
-          <th>{{ invoice.cgst }}</th>
-          <th colspan="2"></th>
-        </tr>
-        <tr>
-          <th colspan="7" class="text-end">Total SGST</th>
-          <th>{{ invoice.sgst }}</th>
-          <th></th>
-        </tr>
-      </tfoot>
-    </table>
+    {% if company.phone_number and (company.header is none or company.phone_number not in company.header) %}
+      <div>Contact: {{ company.phone_number }}</div>
+    {% endif %}
   </div>
+  <div class="d-flex justify-content-between mb-1" style="border-bottom:1px solid #333;padding-bottom:2px;">
+    <div>
+      <strong>Invoice No:</strong> {{ invoice.invoice_number }}<br>
+      <strong>GST Invoice - Original</strong>
+    </div>
+    <div>
+      <strong>Date:</strong> {{ invoice.date.strftime('%d-%m-%Y') }}
+    </div>
+  </div>
+  <div class="d-flex mb-2" style="border-bottom:1px solid #333;">
+    <div style="flex:2"><strong>To:</strong> {{ invoice.customer_name }}</div>
+    <div style="flex:2"><strong>Address:</strong> {{ invoice.customer_address }}</div>
+    <div style="flex:1"><strong>Ph:</strong> </div>
+    <div style="flex:1"><strong>GSTIN:</strong> {{ invoice.customer_gstin }}</div>
+  </div>
+  <table class="table table-bordered mb-2" style="font-size:14px;table-layout:fixed;width:100%;">
+    <thead>
+      <tr class="text-center">
+        <th style="width:40px;">S. No.</th>
+        <th style="width:220px;">Particulars</th>
+        <th style="width:80px;">HSNC</th>
+        <th style="width:50px;">Qty</th>
+        <th style="width:70px;">Rate</th>
+        <th style="width:60px;">Tax%</th>
+        <th style="width:90px;">Net Rate</th>
+        <th style="width:90px;">Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% set min_rows = 10 %}
+      {% for item in items %}
+      <tr style="height:24px;">
+        <td class="text-center">{{ loop.index }}</td>
+        <td>{{ item.product.name }}</td>
+        <td class="text-center">{{ item.product.hsn_code }}</td>
+        <td class="text-center">{{ item.quantity }}</td>
+        <td class="text-end">{{ item.price|indian_currency }}</td>
+        <td class="text-center">{{ item.gst_percent|round(2) }}</td>
+        <td class="text-end">{{ (item.price * (1 + item.gst_percent/100))|indian_currency }}</td>
+        <td class="text-end">{{ item.total|indian_currency }}</td>
+      </tr>
+      {% endfor %}
+      {% for i in range(min_rows - items|length) %}
+      <tr style="height:24px;">
+        <td>&nbsp;</td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <div class="row mb-2" style="min-height:60px;">
+    <div class="col-6" style="float:left;width:50%;">
+      <div><strong>In Words</strong></div>
+      <div style="border-bottom:1px solid #333;min-height:28px;">{{ invoice.total|num2words|upper }} ONLY</div>
+    </div>
+    <div class="col-6" style="float:right;width:50%;">
+      <table class="table table-bordered mb-0" style="font-size:14px;">
+        <tr><td>Sub Total</td><td class="text-end">{{ invoice.total|indian_currency }}</td></tr>
+        <tr><td>Other Charges</td><td class="text-end">0.00</td></tr>
+        <tr><td>Round Off</td><td class="text-end">0.00</td></tr>
+        <tr><th>Total</th><th class="text-end">{{ (invoice.total + 0)|indian_currency }}</th></tr>
+      </table>
+    </div>
+  </div>
+  <table class="table table-bordered mb-2" style="font-size:14px;table-layout:fixed;width:100%;">
+    <thead>
+      <tr class="text-center">
+        <th style="width:60px;">GST %</th>
+        <th style="width:120px;">AMT</th>
+        <th style="width:120px;">CGST</th>
+        <th style="width:120px;">SGST</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="text-center">
+        <td>{{ items[0].gst_percent|round(2) if items else '' }}</td>
+        <td>{{ invoice.total|indian_currency }}</td>
+        <td>{{ invoice.cgst|indian_currency }}</td>
+        <td>{{ invoice.sgst|indian_currency }}</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="mt-2" style="font-size:13px;">
+    Goods once sold cannot be taken back or exchanged.
+  </div>
+  <div class="text-end mt-4" style="font-weight:bold;">For {{ company.title if company else '' }}</div>
+  <style>
+    @media print {
+      body, html {
+        width: 210mm;
+        height: 297mm;
+        background: #fff !important;
+      }
+      .invoice-box {
+        width: 210mm !important;
+        min-height: 297mm !important;
+        max-width: 210mm !important;
+        margin: 0 !important;
+        border: 1px solid #333 !important;
+        box-sizing: border-box;
+        page-break-after: always;
+      }
+      .table {
+        margin-bottom: 0.2rem !important;
+      }
+    }
+  </style>
 </div>
 {% endblock %}

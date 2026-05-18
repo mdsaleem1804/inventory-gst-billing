@@ -98,7 +98,9 @@ def download_invoice_pdf(invoice_id):
 def view_invoice(invoice_id):
     invoice = Invoice.query.get_or_404(invoice_id)
     items = invoice.items
-    return render_template('invoices/view.html', invoice=invoice, items=items)
+    from models import Company
+    company = Company.query.first()
+    return render_template('invoices/view.html', invoice=invoice, items=items, company=company)
 
 
 def get_next_invoice_number():
@@ -157,6 +159,10 @@ def crud_invoices():
             cgst += item_cgst
             sgst += item_sgst
             items.append({'product_id': product.id, 'quantity': quantity, 'price': price, 'gst_percent': gst_percent, 'cgst': item_cgst, 'sgst': item_sgst, 'total': item_total + item_gst})
+        # Round totals to two decimals
+        total = round(total, 2)
+        cgst = round(cgst, 2)
+        sgst = round(sgst, 2)
         if iid:
             invoice = Invoice.query.get(iid)
             if invoice:
@@ -193,7 +199,23 @@ def crud_invoices():
             flash('Invoice added!', 'success')
         return redirect(url_for('invoices.crud_invoices'))
     # GET
+    from_date = request.args.get('from_date')
+    to_date = request.args.get('to_date')
+    if not from_date and not to_date:
+        today = datetime.now().strftime('%Y-%m-%d')
+        from_date = to_date = today
+    search = request.args.get('search', '')
+    query = Invoice.query
+    if from_date:
+        query = query.filter(Invoice.date >= datetime.strptime(from_date, '%Y-%m-%d'))
+    if to_date:
+        query = query.filter(Invoice.date <= datetime.strptime(to_date, '%Y-%m-%d'))
+    if search:
+        query = query.filter(
+            Invoice.invoice_number.ilike(f'%{search}%') |
+            Invoice.customer_name.ilike(f'%{search}%')
+        )
     if edit_id:
         form_invoice = Invoice.query.get(edit_id)
-    invoices = Invoice.query.order_by(Invoice.date.desc()).all()
-    return render_template('invoices/crud.html', invoices=invoices, form_invoice=form_invoice, products=products, customers=customers)
+    invoices = query.order_by(Invoice.created_at.desc() if hasattr(Invoice, 'created_at') else Invoice.date.desc()).all()
+    return render_template('invoices/crud.html', invoices=invoices, form_invoice=form_invoice, products=products, customers=customers, from_date=from_date, to_date=to_date, search=search)

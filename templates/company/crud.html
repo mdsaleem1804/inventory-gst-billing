@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container mt-4">
+    <h2>Company Information</h2>
+    {% if company %}
+        <table class="table table-bordered">
+            <tr><th>Title</th><td>{{ company.title }}</td></tr>
+            <tr><th>Header</th><td>{{ company.header }}</td></tr>
+            <tr><th>GST Number</th><td>{{ company.gst_number }}</td></tr>
+            <tr><th>Phone Number</th><td>{{ company.phone_number }}</td></tr>
+            <tr><th>Address</th><td>{{ company.address }}</td></tr>
+            <tr><th>Created At</th><td>{{ company.created_at }}</td></tr>
+            <tr><th>Updated At</th><td>{{ company.updated_at }}</td></tr>
+        </table>
+        <a href="{{ url_for('company.edit', id=company.id) }}" class="btn btn-primary">Edit</a>
+    {% else %}
+        <a href="{{ url_for('company.add') }}" class="btn btn-success">Add Company Info</a>
+    {% endif %}
+</div>
+{% endblock %}
