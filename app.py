@@ -73,6 +73,9 @@ def register_blueprints(app):
     from settings.routes import settings_bp
     app.register_blueprint(settings_bp)
     print('Registered settings_bp')
+    from units.routes import units_bp
+    app.register_blueprint(units_bp)
+    print('Registered units_bp')
 
 register_blueprints(app)
 

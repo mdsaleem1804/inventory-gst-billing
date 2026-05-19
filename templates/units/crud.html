@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container mt-4">
+    <h2>Units</h2>
+    <form method="post" class="row g-3 mb-4">
+        <div class="col-md-5">
+            <input type="text" name="name" class="form-control" placeholder="Unit Name (e.g. Kilogram)" required>
+        </div>
+        <div class="col-md-3">
+            <input type="text" name="abbreviation" class="form-control" placeholder="Abbreviation (e.g. KG)" required>
+        </div>
+        <div class="col-md-2">
+            <button type="submit" class="btn btn-primary">Add Unit</button>
+        </div>
+    </form>
+    <div class="table-responsive">
+        <table class="table table-bordered">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Abbreviation</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for unit in units %}
+                <tr>
+                    <td>{{ unit.name }}</td>
+                    <td>{{ unit.abbreviation }}</td>
+                    <td>
+                        <a href="{{ url_for('units.edit_unit', unit_id=unit.id) }}" class="btn btn-sm btn-warning">Edit</a>
+                        <form method="post" action="{{ url_for('units.delete_unit', unit_id=unit.id) }}" style="display:inline-block;">
+                            <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete this unit?');">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="3">No units found.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

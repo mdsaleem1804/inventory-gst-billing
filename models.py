@@ -1,11 +1,16 @@
-
-
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from datetime import datetime
 
-
 db = SQLAlchemy()
+
+# Unit model (after db is initialized)
+class Unit(db.Model):
+    __tablename__ = 'units'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(32), unique=True, nullable=False)
+    abbreviation = db.Column(db.String(16), unique=True, nullable=False)
+    products = db.relationship('Product', backref='unit', lazy=True)
 
 # AuditMixin must be defined after db is initialized
 class AuditMixin(object):
@@ -43,6 +48,7 @@ class Product(db.Model, AuditMixin):
     hsn_code = db.Column(db.String(32), nullable=False)
     gst_percent = db.Column(db.Float, nullable=False)
     price = db.Column(db.Float, nullable=False)
+    unit_id = db.Column(db.Integer, db.ForeignKey('units.id'), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 class Invoice(db.Model, AuditMixin):
