@@ -53,13 +53,23 @@ def register_blueprints(app):
     from dashboard import dashboard_bp
     from customers.views import customers_bp
     from company.routes import company_bp
+    from users.routes import users_bp
     app.register_blueprint(auth_bp)
+    print('Registered auth_bp')
     app.register_blueprint(products_bp)
+    print('Registered products_bp')
     app.register_blueprint(invoices_bp)
+    print('Registered invoices_bp')
     app.register_blueprint(reports_bp)
+    print('Registered reports_bp')
     app.register_blueprint(dashboard_bp)
+    print('Registered dashboard_bp')
     app.register_blueprint(customers_bp)
+    print('Registered customers_bp')
     app.register_blueprint(company_bp)
+    print('Registered company_bp')
+    app.register_blueprint(users_bp)
+    print('Registered users_bp')
 
 register_blueprints(app)
 

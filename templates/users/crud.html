@@ -1,0 +1,65 @@
+{% extends 'base.html' %}
+{% block title %}Users{% endblock %}
+{% block content %}
+<h2>Users</h2>
+<div class="card mb-4">
+  <div class="card-body">
+    <form method="post" action="{{ url_for('users.crud_users') }}">
+      <input type="hidden" name="id" value="{{ form_user.id if form_user else '' }}">
+      <div class="row g-3 align-items-end">
+        <div class="col-md-3">
+          <label class="form-label">Username</label>
+          <input type="text" name="username" class="form-control" value="{{ form_user.username if form_user else '' }}" required {% if form_user and form_user.username == 'admin' %}readonly{% endif %}>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Password</label>
+          <input type="password" name="password" class="form-control" {% if not form_user %}required{% endif %}>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Role</label>
+          <select name="role" class="form-select" {% if form_user and form_user.username == 'admin' %}disabled{% endif %}>
+            <option value="admin" {% if form_user and form_user.role == 'admin' %}selected{% endif %}>Admin</option>
+            <option value="staff" {% if not form_user or form_user.role == 'staff' %}selected{% endif %}>Staff</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <button type="submit" class="btn btn-primary">{{ 'Update' if form_user else 'Add' }} User</button>
+          {% if form_user %}
+          <a href="{{ url_for('users.crud_users') }}" class="btn btn-secondary">Cancel</a>
+          {% endif %}
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+<table class="table table-bordered table-hover">
+  <thead class="table-light">
+    <tr>
+      <th>ID</th>
+      <th>Username</th>
+      <th>Role</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for user in users %}
+    <tr>
+      <td>{{ user.id }}</td>
+      <td>{{ user.username }}</td>
+      <td>{{ user.role }}</td>
+      <td>
+        <a href="{{ url_for('users.crud_users', edit_id=user.id) }}" class="btn btn-sm btn-info">Edit</a>
+        {% if user.username != 'admin' %}
+        <form method="post" action="{{ url_for('users.crud_users') }}" style="display:inline;">
+          <input type="hidden" name="delete_id" value="{{ user.id }}">
+          <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete this user?');">Delete</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="4" class="text-center">No users found.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

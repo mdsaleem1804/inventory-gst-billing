@@ -39,7 +39,14 @@ def crud_customers():
             flash('Customer added!', 'success')
         return redirect(url_for('customers.crud_customers'))
     # GET
+    search = request.args.get('search', '')
     if edit_id:
         form_customer = Customer.query.get(edit_id)
-    customers = Customer.query.order_by(Customer.name).all()
-    return render_template('customers/crud.html', customers=customers, form_customer=form_customer)
+    query = Customer.query
+    if search:
+        query = query.filter(
+            Customer.name.ilike(f'%{search}%') |
+            Customer.gstin.ilike(f'%{search}%')
+        )
+    customers = query.order_by(Customer.name).all()
+    return render_template('customers/crud.html', customers=customers, form_customer=form_customer, search=search)

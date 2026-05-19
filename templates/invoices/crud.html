@@ -8,14 +8,7 @@
     <a href="{{ url_for('invoices.crud_invoices') }}?edit_id=new" class="btn btn-success">New Invoice</a>
   </div>
 </div>
-<form method="get" class="row mb-3">
-  <div class="col-md-4">
-    <input type="text" name="search" class="form-control" placeholder="Search invoice #, customer" value="{{ search or '' }}">
-  </div>
-  <div class="col-md-2">
-    <button type="submit" class="btn btn-outline-primary">Search</button>
-  </div>
-</form>
+<!-- Removed duplicate top filter/search form. Only one filter/search form remains below the Save Invoice section. -->
 <div class="card mb-4">
   <div class="card-body">
     <form method="post" action="{{ url_for('invoices.crud_invoices') }}">
@@ -94,8 +87,14 @@
     <label for="to_date" class="form-label mb-0">To Date</label>
     <input type="date" id="to_date" name="to_date" class="form-control" value="{{ to_date|default('') }}">
   </div>
-  <div class="col-auto">
+  <div class="col-auto align-self-end">
     <button type="submit" class="btn btn-primary">Filter</button>
+  </div>
+  <div class="col-md-6">
+    <input type="text" id="search" name="search" class="form-control" style="min-width:350px;max-width:100%;" placeholder="Search invoice #, customer" value="{{ search or '' }}">
+  </div>
+  <div class="col-auto align-self-end">
+    <button type="submit" class="btn btn-outline-primary">Search</button>
   </div>
 </form>
 <table class="table table-bordered table-hover">
