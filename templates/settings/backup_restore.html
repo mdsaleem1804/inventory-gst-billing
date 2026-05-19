@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container mt-4">
+    <h2>Data Backup & Restore</h2>
+    <form method="post">
+        <button type="submit" name="backup" class="btn btn-primary mb-3">Create Backup</button>
+    </form>
+    <h4>Available Backups</h4>
+    <form method="post">
+        <div class="table-responsive">
+            <table class="table table-bordered">
+                <thead>
+                    <tr>
+                        <th>Backup File</th>
+                        <th>Download</th>
+                        <th>Restore</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for file in backup_files %}
+                    <tr>
+                        <td>{{ file }}</td>
+                        <td><a href="{{ url_for('settings.download_backup', filename=file) }}" class="btn btn-sm btn-success">Download</a></td>
+                        <td>
+                            <button type="submit" name="restore" value="restore" class="btn btn-sm btn-warning" onclick="return confirm('Restore this backup? The app will need to be restarted.');">
+                                Restore
+                            </button>
+                            <input type="hidden" name="restore_file" value="{{ file }}">
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="3">No backups found.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </form>
+</div>
+{% endblock %}

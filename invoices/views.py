@@ -206,10 +206,11 @@ def crud_invoices():
         from_date = to_date = today
     search = request.args.get('search', '')
     query = Invoice.query
+    from sqlalchemy import func
     if from_date:
-        query = query.filter(Invoice.date >= datetime.strptime(from_date, '%Y-%m-%d'))
+        query = query.filter(func.date(Invoice.date) >= from_date)
     if to_date:
-        query = query.filter(Invoice.date <= datetime.strptime(to_date, '%Y-%m-%d'))
+        query = query.filter(func.date(Invoice.date) <= to_date)
     if search:
         query = query.filter(
             Invoice.invoice_number.ilike(f'%{search}%') |

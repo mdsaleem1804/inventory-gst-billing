@@ -70,6 +70,9 @@ def register_blueprints(app):
     print('Registered company_bp')
     app.register_blueprint(users_bp)
     print('Registered users_bp')
+    from settings.routes import settings_bp
+    app.register_blueprint(settings_bp)
+    print('Registered settings_bp')
 
 register_blueprints(app)
 
