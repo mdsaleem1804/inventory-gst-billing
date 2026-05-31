@@ -34,7 +34,10 @@ def dashboard():
             (InvoiceItem.quantity * InvoiceItem.price * InvoiceItem.gst_percent / 100).label('gst'),
             (InvoiceItem.quantity * InvoiceItem.price + InvoiceItem.quantity * InvoiceItem.price * InvoiceItem.gst_percent / 100).label('total'),
             Invoice.id.label('invoice_id'),
-            Invoice.customer_name
+            Invoice.customer_name,
+            Invoice.total.label('invoice_total'),
+            Invoice.paid_amount.label('invoice_paid_amount'),
+            Invoice.payment_status.label('invoice_payment_status')
         )
         .join(Invoice, InvoiceItem.invoice_id == Invoice.id)
         .join(Product, InvoiceItem.product_id == Product.id)
@@ -87,12 +90,30 @@ def dashboard():
         .limit(5)
         .all()
     )
+    sales_with_overpaid = []
+    for sale in sales:
+        sales_with_overpaid.append(
+            {
+                'id': sale.id,
+                'product_name': sale.product_name,
+                'quantity': sale.quantity,
+                'price': sale.price,
+                'gst': sale.gst,
+                'total': sale.total,
+                'invoice_id': sale.invoice_id,
+                'customer_name': sale.customer_name,
+                'invoice_total': round(float(sale.invoice_total or 0), 2),
+                'invoice_paid_amount': round(float(sale.invoice_paid_amount or 0), 2),
+                'invoice_payment_status': sale.invoice_payment_status,
+                'overpaid_amount': round(max(float(sale.invoice_paid_amount or 0) - float(sale.invoice_total or 0), 0.0), 2),
+            }
+        )
     return render_template(
         'dashboard.html',
         today=today,
         from_date=from_date_obj,
         to_date=to_date_obj,
-        sales=sales,
+        sales=sales_with_overpaid,
         total_sales=total_sales,
         total_gst=total_gst,
         total_invoices=total_invoices,

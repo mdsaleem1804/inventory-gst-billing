@@ -11,6 +11,10 @@ from sqlalchemy import func
 from collections import defaultdict
 
 
+def _export_amount(value):
+	return f"{float(value or 0):.2f}"
+
+
 def _log_report_export(action, details):
 	db.session.add(
 		ActivityLog(
@@ -47,9 +51,9 @@ def sales_report():
 				'Date': inv.date.strftime('%Y-%m-%d'),
 				'Invoice #': inv.invoice_number,
 				'Customer': inv.customer_name,
-				'Total': inv.total,
-				'CGST': inv.cgst,
-				'SGST': inv.sgst
+				'Total': _export_amount(inv.total),
+				'CGST': _export_amount(inv.cgst),
+				'SGST': _export_amount(inv.sgst)
 			} for inv in invoices
 		])
 		buffer = io.BytesIO()
@@ -110,8 +114,8 @@ def product_report():
 				'ID': p.id,
 				'Name': p.name,
 				'HSN Code': p.hsn_code,
-				'GST %': p.gst_percent,
-				'Price': p.price
+				'GST %': _export_amount(p.gst_percent),
+				'Price': _export_amount(p.price)
 			} for p in products
 		])
 		buffer = io.BytesIO()
@@ -301,10 +305,10 @@ def payment_report():
 				'Invoice #': inv.invoice_number,
 				'Customer': inv.customer_name,
 				'Invoice Status': inv.payment_status,
-				'Invoice Total': inv.total,
-				'Invoice Paid': inv.paid_amount,
-				'Invoice Balance': inv.balance_amount,
-				'Payment Amount': pay.amount,
+				'Invoice Total': _export_amount(inv.total),
+				'Invoice Paid': _export_amount(inv.paid_amount),
+				'Invoice Balance': _export_amount(inv.balance_amount),
+				'Payment Amount': _export_amount(pay.amount),
 				'Payment Mode': pay.payment_mode,
 				'Reference': pay.reference_no,
 				'Notes': pay.notes,
@@ -330,10 +334,10 @@ def payment_report():
 				'Invoice #': inv.invoice_number,
 				'Customer': inv.customer_name,
 				'Invoice Status': inv.payment_status,
-				'Invoice Total': inv.total,
-				'Invoice Paid': inv.paid_amount,
-				'Invoice Balance': inv.balance_amount,
-				'Payment Amount': pay.amount,
+				'Invoice Total': _export_amount(inv.total),
+				'Invoice Paid': _export_amount(inv.paid_amount),
+				'Invoice Balance': _export_amount(inv.balance_amount),
+				'Payment Amount': _export_amount(pay.amount),
 				'Payment Mode': pay.payment_mode,
 				'Reference': pay.reference_no,
 				'Notes': pay.notes,
@@ -508,9 +512,9 @@ def outstanding_aging_report():
 					'Invoice Date': row['invoice_date'].strftime('%Y-%m-%d') if row['invoice_date'] else '',
 					'Age Days': row['age_days'],
 					'Bucket': row['bucket'],
-					'Invoice Total': row['invoice_total'],
-					'Paid': row['paid_amount'],
-					'Balance': row['balance_amount'],
+					'Invoice Total': _export_amount(row['invoice_total']),
+					'Paid': _export_amount(row['paid_amount']),
+					'Balance': _export_amount(row['balance_amount']),
 					'Status': row['payment_status'],
 				}
 				for row in invoice_rows
@@ -536,9 +540,9 @@ def outstanding_aging_report():
 					'Invoice Date': row['invoice_date'].strftime('%Y-%m-%d') if row['invoice_date'] else '',
 					'Age Days': row['age_days'],
 					'Bucket': row['bucket'],
-					'Invoice Total': row['invoice_total'],
-					'Paid': row['paid_amount'],
-					'Balance': row['balance_amount'],
+					'Invoice Total': _export_amount(row['invoice_total']),
+					'Paid': _export_amount(row['paid_amount']),
+					'Balance': _export_amount(row['balance_amount']),
 					'Status': row['payment_status'],
 				}
 				for row in invoice_rows

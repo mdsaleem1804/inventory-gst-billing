@@ -18,16 +18,26 @@
             <th>GST</th>
             <th>Total</th>
             <th>Invoice</th>
+            <th>Status</th>
         </tr>
         {% for sale in sales %}
         <tr>
             <td>{{ sale.id }}</td>
             <td>{{ sale.product_name }}</td>
             <td>{{ sale.quantity }}</td>
-            <td>{{ sale.price }}</td>
-            <td>{{ sale.gst }}</td>
-            <td>{{ sale.quantity * sale.price + sale.gst }}</td>
+            <td>{{ sale.price|indian_currency }}</td>
+            <td>{{ sale.gst|indian_currency }}</td>
+            <td>{{ (sale.quantity * sale.price + sale.gst)|indian_currency }}</td>
             <td><a href="/invoice/{{ sale.id }}">Invoice</a></td>
+            <td>
+                {% if sale.paid_amount is defined and sale.total is defined and sale.paid_amount > sale.total %}
+                <span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#ffc107;color:#111;font-weight:700;">Overpaid by {{ (sale.paid_amount - sale.total)|indian_currency }}</span>
+                {% elif sale.payment_status is defined and sale.payment_status == 'paid' %}
+                <span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#198754;color:#fff;font-weight:700;">Paid</span>
+                {% else %}
+                <span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#6c757d;color:#fff;font-weight:700;">Open</span>
+                {% endif %}
+            </td>
         </tr>
         {% endfor %}
     </table>

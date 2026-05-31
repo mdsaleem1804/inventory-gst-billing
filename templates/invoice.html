@@ -9,9 +9,9 @@
     <p><strong>Date:</strong> {{ sale.date }}</p>
     <p><strong>Product Name:</strong> {{ sale.product_name }}</p>
     <p><strong>Quantity:</strong> {{ sale.quantity }}</p>
-    <p><strong>Price:</strong> {{ sale.price }}</p>
-    <p><strong>GST:</strong> {{ sale.gst }}</p>
-    <p><strong>Total:</strong> {{ sale.quantity * sale.price + sale.gst }}</p>
+    <p><strong>Price:</strong> {{ sale.price|indian_currency }}</p>
+    <p><strong>GST:</strong> {{ sale.gst|indian_currency }}</p>
+    <p><strong>Total:</strong> {{ (sale.quantity * sale.price + sale.gst)|indian_currency }}</p>
     <hr>
     <a href="/">Back to Dashboard</a>
 </body>

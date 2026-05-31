@@ -20,7 +20,7 @@
       <td>{{ product.name }}</td>
       <td>{{ product.hsn_code }}</td>
       <td>{{ product.gst_percent }}</td>
-      <td class="text-end">{{ product.price }}</td>
+      <td class="text-end">{{ product.price|indian_currency }}</td>
     </tr>
     {% else %}
     <tr><td colspan="5" class="text-center">No products found.</td></tr>

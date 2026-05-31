@@ -11,6 +11,10 @@ from datetime import datetime
 from sqlalchemy import func
 
 
+def _export_amount(value):
+    return f"{float(value or 0):.2f}"
+
+
 def _can_manage_invoices():
     return current_user.role in ('admin', 'approver')
 
@@ -59,15 +63,13 @@ def _recalculate_invoice_payment(invoice):
     paid = round(float(invoice.paid_amount or 0), 2)
     if paid < 0:
         paid = 0
-    if paid > total:
-        paid = total
     balance = round(total - paid, 2)
 
     invoice.paid_amount = paid
-    invoice.balance_amount = balance
+    invoice.balance_amount = balance if balance > 0 else 0
     if paid <= 0:
         invoice.payment_status = 'unpaid'
-    elif balance <= 0:
+    elif paid >= total:
         invoice.payment_status = 'paid'
     else:
         invoice.payment_status = 'partial'
@@ -120,6 +122,10 @@ def _payment_snapshot(payment):
         f", notes={payment.notes or '-'}"
     )
 
+
+def _can_receive_payment(invoice):
+    return round(float(invoice.balance_amount or 0), 2) > 0
+
 @invoices_bp.route('/export/excel')
 @login_required
 def export_invoices_excel():
@@ -131,9 +137,9 @@ def export_invoices_excel():
             'Date': inv.date.strftime('%Y-%m-%d'),
             'Customer': inv.customer_name,
             'GSTIN': inv.customer_gstin,
-            'Total': inv.total,
-            'CGST': inv.cgst,
-            'SGST': inv.sgst
+            'Total': _export_amount(inv.total),
+            'CGST': _export_amount(inv.cgst),
+            'SGST': _export_amount(inv.sgst)
         })
     df = pd.DataFrame(data)
     buffer = io.BytesIO()
@@ -219,6 +225,8 @@ def track_invoice_print(invoice_id):
 def view_invoice(invoice_id):
     invoice = Invoice.query.get_or_404(invoice_id)
     payments = Payment.query.filter_by(invoice_id=invoice.id).order_by(Payment.payment_date.desc(), Payment.id.desc()).all()
+    overpaid_amount = round(max(float(invoice.paid_amount or 0) - float(invoice.total or 0), 0.0), 2)
+    can_receive_payment = _can_receive_payment(invoice)
     _log_invoice_activity(
         'Invoice Viewed',
         f'Invoice {invoice.invoice_number} viewed for customer {invoice.customer_name}',
@@ -226,7 +234,15 @@ def view_invoice(invoice_id):
     items = invoice.items
     from models import Company
     company = Company.query.first()
-    return render_template('invoices/view.html', invoice=invoice, items=items, company=company, payments=payments)
+    return render_template(
+        'invoices/view.html',
+        invoice=invoice,
+        items=items,
+        company=company,
+        payments=payments,
+        overpaid_amount=overpaid_amount,
+        can_receive_payment=can_receive_payment,
+    )
 
 
 @invoices_bp.route('/<int:invoice_id>/receive-payment', methods=['GET', 'POST'])
@@ -235,6 +251,11 @@ def receive_payment(invoice_id):
     invoice = Invoice.query.get_or_404(invoice_id)
     can_manage_payments = _can_manage_payments()
     today = datetime.now().strftime('%Y-%m-%d')
+    can_receive_payment = _can_receive_payment(invoice)
+
+    if not can_receive_payment:
+        flash('This invoice is already fully paid. Use Edit Payment only if you need to adjust an existing payment.', 'info')
+        return redirect(url_for('invoices.view_invoice', invoice_id=invoice.id))
 
     if request.method == 'POST':
         amount = request.form.get('amount', type=float)
@@ -598,6 +619,7 @@ def crud_invoices():
                 invoice.cgst = cgst
                 invoice.sgst = sgst
                 _recalculate_invoice_payment(invoice)
+                overpaid_amount = round(float(invoice.paid_amount or 0) - float(invoice.total or 0), 2)
                 # Remove old items
                 InvoiceItem.query.filter_by(invoice_id=invoice.id).delete()
                 db.session.flush()
@@ -612,6 +634,11 @@ def crud_invoices():
                     )
                 )
                 db.session.commit()
+                if overpaid_amount > 0:
+                    flash(
+                        f'Invoice updated. Collected amount now exceeds the revised total by {overpaid_amount:.2f}.',
+                        'warning',
+                    )
                 flash('Invoice updated!', 'success')
         else:
             applied_amount = 0.0

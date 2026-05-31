@@ -21,9 +21,9 @@
       <td><a href="{{ url_for('invoices.view_invoice', invoice_id=invoice.id) }}">{{ invoice.invoice_number }}</a></td>
       <td>{{ invoice.date.strftime('%Y-%m-%d') }}</td>
       <td>{{ invoice.customer_name }}</td>
-      <td class="text-end">{{ invoice.total|float|indian_currency }}</td>
-      <td class="text-end">{{ invoice.cgst|float|indian_currency }}</td>
-      <td class="text-end">{{ invoice.sgst|float|indian_currency }}</td>
+      <td class="text-end">{{ invoice.total|indian_currency }}</td>
+      <td class="text-end">{{ invoice.cgst|indian_currency }}</td>
+      <td class="text-end">{{ invoice.sgst|indian_currency }}</td>
     </tr>
     {% else %}
     <tr><td colspan="6" class="text-center">No invoices found.</td></tr>

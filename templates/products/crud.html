@@ -17,11 +17,11 @@
         </div>
         <div class="col-md-2">
           <label class="form-label">GST %</label>
-          <input type="number" name="gst_percent" class="form-control" step="0.01" value="{{ form_product.gst_percent if form_product else '' }}" required>
+          <input type="number" name="gst_percent" class="form-control" step="0.01" value="{{ '%.2f'|format(form_product.gst_percent) if form_product and form_product.gst_percent is not none else '' }}" required>
         </div>
         <div class="col-md-2">
           <label class="form-label">Price</label>
-          <input type="number" name="price" class="form-control" step="0.01" value="{{ form_product.price if form_product else '' }}" required>
+          <input type="number" name="price" class="form-control" step="0.01" value="{{ '%.2f'|format(form_product.price) if form_product and form_product.price is not none else '' }}" required>
         </div>
         <div class="col-md-3">
           <button type="submit" class="btn btn-primary">{{ 'Update' if form_product else 'Add' }} Product</button>

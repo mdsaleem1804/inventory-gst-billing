@@ -10,6 +10,10 @@ from models import db, Expense, ExpenseCategory, BankAccount, Payment, ActivityL
 from .routes import finance_bp
 
 
+def _export_amount(value):
+    return f"{float(value or 0):.2f}"
+
+
 def _is_finance_editor():
     return current_user.role in ('admin', 'approver')
 
@@ -156,7 +160,7 @@ def expenses():
             {
                 'Date': e.expense_date.strftime('%Y-%m-%d') if e.expense_date else '',
                 'Category': e.category.name if e.category else '',
-                'Amount': round(float(e.amount or 0), 2),
+                'Amount': _export_amount(e.amount),
                 'Mode': e.payment_mode or '',
                 'Bank Account': e.bank_account.account_name if e.bank_account else '',
                 'Reference': e.reference_no or '',
@@ -174,7 +178,7 @@ def expenses():
             {
                 'Date': e.expense_date.strftime('%Y-%m-%d') if e.expense_date else '',
                 'Category': e.category.name if e.category else '',
-                'Amount': round(float(e.amount or 0), 2),
+                'Amount': _export_amount(e.amount),
                 'Mode': e.payment_mode or '',
                 'Bank Account': e.bank_account.account_name if e.bank_account else '',
                 'Reference': e.reference_no or '',
@@ -280,8 +284,8 @@ def bank_book():
                 'Mode': r['mode'],
                 'Account': r['account'],
                 'Reference': r['reference'],
-                'In': r['amount_in'],
-                'Out': r['amount_out'],
+                'In': _export_amount(r['amount_in']),
+                'Out': _export_amount(r['amount_out']),
             }
             for r in ledger_rows
         ]
@@ -298,8 +302,8 @@ def bank_book():
                 'Mode': r['mode'],
                 'Account': r['account'],
                 'Reference': r['reference'],
-                'In': r['amount_in'],
-                'Out': r['amount_out'],
+                'In': _export_amount(r['amount_in']),
+                'Out': _export_amount(r['amount_out']),
             }
             for r in ledger_rows
         ]

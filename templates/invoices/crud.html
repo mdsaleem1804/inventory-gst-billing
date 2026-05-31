@@ -195,9 +195,9 @@
       <td>{{ invoice.invoice_number }}</td>
       <td>{{ invoice.date.strftime('%Y-%m-%d') }}</td>
       <td>{{ invoice.customer_name }}</td>
-      <td class="text-end">{{ invoice.total }}</td>
-      <td class="text-end">{{ invoice.paid_amount or 0 }}</td>
-      <td class="text-end">{{ invoice.balance_amount if invoice.balance_amount is not none else invoice.total }}</td>
+      <td class="text-end">{{ invoice.total|indian_currency }}</td>
+      <td class="text-end">{{ (invoice.paid_amount or 0)|indian_currency }}</td>
+      <td class="text-end">{{ (invoice.balance_amount if invoice.balance_amount is not none else invoice.total)|indian_currency }}</td>
       <td>
         {% if invoice.payment_status == 'paid' %}
         <span class="badge bg-success">Paid</span>
@@ -207,8 +207,8 @@
         <span class="badge bg-danger">Unpaid</span>
         {% endif %}
       </td>
-      <td class="text-end">{{ invoice.cgst }}</td>
-      <td class="text-end">{{ invoice.sgst }}</td>
+      <td class="text-end">{{ invoice.cgst|indian_currency }}</td>
+      <td class="text-end">{{ invoice.sgst|indian_currency }}</td>
       <td>
         {% if can_manage_invoices %}
         <a href="{{ url_for('invoices.crud_invoices', edit_id=invoice.id) }}" class="btn btn-sm btn-info">Edit</a>
@@ -218,7 +218,11 @@
         </form>
         {% endif %}
         <a href="{{ url_for('invoices.view_invoice', invoice_id=invoice.id) }}" class="btn btn-sm btn-secondary">View</a>
+        {% if (invoice.balance_amount if invoice.balance_amount is not none else invoice.total) > 0 %}
         <a href="{{ url_for('invoices.receive_payment', invoice_id=invoice.id) }}" class="btn btn-sm btn-success">Receive Payment</a>
+        {% else %}
+        <span class="badge bg-success">Paid</span>
+        {% endif %}
       </td>
     </tr>
     {% else %}

@@ -79,6 +79,7 @@
                                 <th>Total</th>
                                 <th>Customer</th>
                                 <th>Invoice</th>
+                                <th>Status</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -92,10 +93,21 @@
                                 <td class="text-end">{{ sale.total|indian_currency }}</td>
                                 <td>{{ sale.customer_name }}</td>
                                 <td><a href="/invoices/{{ sale.invoice_id }}" class="btn btn-outline-primary btn-sm rounded-pill"><i class="bi bi-file-earmark-text"></i></a></td>
+                                <td>
+                                    {% if sale.overpaid_amount > 0 %}
+                                    <span class="badge text-bg-warning">Overpaid by {{ sale.overpaid_amount|indian_currency }}</span>
+                                    {% elif sale.invoice_payment_status == 'paid' %}
+                                    <span class="badge bg-success">Paid</span>
+                                    {% elif sale.invoice_payment_status == 'partial' %}
+                                    <span class="badge bg-warning text-dark">Partial</span>
+                                    {% else %}
+                                    <span class="badge bg-danger">Unpaid</span>
+                                    {% endif %}
+                                </td>
                             </tr>
                             {% endfor %}
                             {% if sales|length == 0 %}
-                            <tr><td colspan="8" class="text-center">No sales in this period.</td></tr>
+                            <tr><td colspan="9" class="text-center">No sales in this period.</td></tr>
                             {% endif %}
                         </tbody>
                     </table>
