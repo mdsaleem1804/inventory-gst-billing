@@ -1,0 +1,196 @@
+{% extends 'base.html' %}
+{% block title %}Outstanding Aging Report{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="mb-0">Outstanding Aging Report</h2>
+  <div>
+    <button onclick="window.print()" class="btn btn-outline-secondary me-2">Print</button>
+    <a href="{{ url_for('reports.outstanding_aging_report', as_of_date=as_of_date, search=search, priority_threshold=priority_threshold, export='csv') }}" class="btn btn-outline-primary me-2">Export CSV</a>
+    <a href="{{ url_for('reports.outstanding_aging_report', as_of_date=as_of_date, search=search, priority_threshold=priority_threshold, export='excel') }}" class="btn btn-outline-success">Export Excel</a>
+  </div>
+</div>
+
+<form method="get" class="row g-3 mb-3">
+  <div class="col-md-3">
+    <label class="form-label">As Of Date</label>
+    <input type="date" name="as_of_date" class="form-control" value="{{ as_of_date }}">
+  </div>
+  <div class="col-md-4">
+    <label class="form-label">Search</label>
+    <input type="text" name="search" class="form-control" value="{{ search|default('') }}" placeholder="Customer, Invoice #...">
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">High Priority Threshold</label>
+    <input type="number" name="priority_threshold" class="form-control" min="0" step="0.01" value="{{ priority_threshold }}">
+  </div>
+  <div class="col-md-2 align-self-end">
+    <button type="submit" class="btn btn-primary">Filter</button>
+  </div>
+</form>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-2">
+    <div class="card border-0 bg-light h-100">
+      <div class="card-body">
+        <div class="text-muted small">0-30 Days</div>
+        <div class="h5 mb-0">{{ bucket_totals['0_30']|indian_currency }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-2">
+    <div class="card border-0 bg-light h-100">
+      <div class="card-body">
+        <div class="text-muted small">31-60 Days</div>
+        <div class="h5 mb-0">{{ bucket_totals['31_60']|indian_currency }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-2">
+    <div class="card border-0 bg-light h-100">
+      <div class="card-body">
+        <div class="text-muted small">61-90 Days</div>
+        <div class="h5 mb-0">{{ bucket_totals['61_90']|indian_currency }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-2">
+    <div class="card border-0 bg-light h-100">
+      <div class="card-body">
+        <div class="text-muted small">90+ Days</div>
+        <div class="h5 mb-0">{{ bucket_totals['90_plus']|indian_currency }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card border-0 bg-warning-subtle h-100">
+      <div class="card-body">
+        <div class="text-muted small">Grand Outstanding</div>
+        <div class="h4 mb-0">{{ grand_outstanding|indian_currency }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 bg-danger-subtle h-100">
+      <div class="card-body">
+        <div class="text-muted small">High Priority Customers</div>
+        <div class="h4 mb-0">{{ high_priority_count }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 bg-warning h-100">
+      <div class="card-body">
+        <div class="text-muted small">Medium Priority Customers</div>
+        <div class="h4 mb-0">{{ medium_priority_count }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="alert alert-light border mb-3" role="alert">
+  <strong>Priority Rule:</strong> High priority when oldest due is above 60 days and outstanding is greater than or equal to the threshold.
+  Medium priority when oldest due is above 30 days and outstanding is at least 50% of the threshold.
+</div>
+
+<div class="card mb-4">
+  <div class="card-header">Customer Aging Summary</div>
+  <div class="table-responsive">
+    <table class="table table-bordered table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Customer</th>
+          <th>Invoices</th>
+          <th>0-30</th>
+          <th>31-60</th>
+          <th>61-90</th>
+          <th>90+</th>
+          <th>Total Outstanding</th>
+          <th>Oldest Due (Days)</th>
+          <th>Priority</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in customer_rows %}
+        <tr class="{% if row.priority_level == 'high' %}table-danger{% elif row.priority_level == 'medium' %}table-warning{% endif %}">
+          <td>{{ row.customer_name }}</td>
+          <td>{{ row.invoice_count }}</td>
+          <td class="text-end">{{ row['0_30']|indian_currency }}</td>
+          <td class="text-end">{{ row['31_60']|indian_currency }}</td>
+          <td class="text-end">{{ row['61_90']|indian_currency }}</td>
+          <td class="text-end">{{ row['90_plus']|indian_currency }}</td>
+          <td class="text-end fw-bold">{{ row.total_outstanding|indian_currency }}</td>
+          <td>{{ row.oldest_days }}</td>
+          <td>
+            {% if row.priority_level == 'high' %}
+              <span class="badge bg-danger">High</span>
+            {% elif row.priority_level == 'medium' %}
+              <span class="badge bg-warning text-dark">Medium</span>
+            {% else %}
+              <span class="badge bg-secondary">Normal</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="9" class="text-center">No outstanding balances found.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">Invoice Aging Details</div>
+  <div class="table-responsive">
+    <table class="table table-bordered table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Invoice #</th>
+          <th>Date</th>
+          <th>Customer</th>
+          <th>Age Days</th>
+          <th>Bucket</th>
+          <th>Invoice Total</th>
+          <th>Paid</th>
+          <th>Balance</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in invoice_rows %}
+        <tr>
+          <td>{{ row.invoice_number }}</td>
+          <td>{{ row.invoice_date.strftime('%Y-%m-%d') if row.invoice_date else '-' }}</td>
+          <td>{{ row.customer_name }}</td>
+          <td>{{ row.age_days }}</td>
+          <td>
+            {% if row.bucket == '0_30' %}
+              0-30
+            {% elif row.bucket == '31_60' %}
+              31-60
+            {% elif row.bucket == '61_90' %}
+              61-90
+            {% else %}
+              90+
+            {% endif %}
+          </td>
+          <td class="text-end">{{ row.invoice_total|indian_currency }}</td>
+          <td class="text-end">{{ row.paid_amount|indian_currency }}</td>
+          <td class="text-end">{{ row.balance_amount|indian_currency }}</td>
+          <td>
+            {% if row.payment_status == 'paid' %}
+            <span class="badge bg-success">Paid</span>
+            {% elif row.payment_status == 'partial' %}
+            <span class="badge bg-warning text-dark">Partial</span>
+            {% else %}
+            <span class="badge bg-danger">Unpaid</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="9" class="text-center">No outstanding invoices found.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

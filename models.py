@@ -1,6 +1,7 @@
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from datetime import datetime
+from sqlalchemy import inspect, text
 
 db = SQLAlchemy()
 
@@ -62,9 +63,16 @@ class Invoice(db.Model, AuditMixin):
     total = db.Column(db.Float, nullable=False)
     cgst = db.Column(db.Float, nullable=False)
     sgst = db.Column(db.Float, nullable=False)
+    payment_status = db.Column(db.String(16), nullable=False, default='unpaid')
+    paid_amount = db.Column(db.Float, nullable=False, default=0)
+    balance_amount = db.Column(db.Float, nullable=False, default=0)
+    payment_date = db.Column(db.DateTime, nullable=True)
+    payment_mode = db.Column(db.String(32), nullable=True)
+    reference_no = db.Column(db.String(64), nullable=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     user = db.relationship('User', backref='invoices')
     items = db.relationship('InvoiceItem', backref='invoice', lazy=True)
+    payments = db.relationship('Payment', backref='invoice', lazy=True, cascade='all, delete-orphan')
 
 class InvoiceItem(db.Model, AuditMixin):
     __tablename__ = 'invoice_items'
@@ -78,6 +86,19 @@ class InvoiceItem(db.Model, AuditMixin):
     sgst = db.Column(db.Float, nullable=False)
     total = db.Column(db.Float, nullable=False)
     product = db.relationship('Product')
+
+
+class Payment(db.Model, AuditMixin):
+    __tablename__ = 'payments'
+    id = db.Column(db.Integer, primary_key=True)
+    invoice_id = db.Column(db.Integer, db.ForeignKey('invoices.id'), nullable=False)
+    amount = db.Column(db.Float, nullable=False)
+    payment_date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    payment_mode = db.Column(db.String(32), nullable=True)
+    reference_no = db.Column(db.String(64), nullable=True)
+    notes = db.Column(db.String(256), nullable=True)
+    received_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    received_by_user = db.relationship('User')
 
 class Customer(db.Model, AuditMixin):
     __tablename__ = 'customers'
@@ -99,3 +120,51 @@ class Company(db.Model):
     logo = db.Column(db.String(256), nullable=True)  # Path to logo image
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+def ensure_billing_schema():
+    inspector = inspect(db.engine)
+    table_names = inspector.get_table_names()
+
+    if 'invoices' in table_names:
+        columns = {col['name'] for col in inspector.get_columns('invoices')}
+        alter_statements = []
+        if 'payment_status' not in columns:
+            alter_statements.append("ALTER TABLE invoices ADD COLUMN payment_status VARCHAR(16) DEFAULT 'unpaid'")
+        if 'paid_amount' not in columns:
+            alter_statements.append("ALTER TABLE invoices ADD COLUMN paid_amount FLOAT DEFAULT 0")
+        if 'balance_amount' not in columns:
+            alter_statements.append("ALTER TABLE invoices ADD COLUMN balance_amount FLOAT DEFAULT 0")
+        if 'payment_date' not in columns:
+            alter_statements.append("ALTER TABLE invoices ADD COLUMN payment_date DATETIME")
+        if 'payment_mode' not in columns:
+            alter_statements.append("ALTER TABLE invoices ADD COLUMN payment_mode VARCHAR(32)")
+        if 'reference_no' not in columns:
+            alter_statements.append("ALTER TABLE invoices ADD COLUMN reference_no VARCHAR(64)")
+
+        if alter_statements:
+            with db.engine.begin() as connection:
+                for stmt in alter_statements:
+                    connection.execute(text(stmt))
+
+        with db.engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    UPDATE invoices
+                    SET
+                        paid_amount = COALESCE(paid_amount, 0),
+                        balance_amount = CASE
+                            WHEN balance_amount IS NULL OR balance_amount = 0 THEN total - COALESCE(paid_amount, 0)
+                            ELSE balance_amount
+                        END,
+                        payment_status = CASE
+                            WHEN COALESCE(paid_amount, 0) <= 0 THEN 'unpaid'
+                            WHEN total - COALESCE(paid_amount, 0) <= 0 THEN 'paid'
+                            ELSE 'partial'
+                        END
+                    """
+                )
+            )
+
+        Payment.__table__.create(bind=db.engine, checkfirst=True)

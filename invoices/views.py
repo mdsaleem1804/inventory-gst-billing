@@ -6,11 +6,16 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from flask_login import login_required, current_user
 from .routes import invoices_bp
-from models import db, Invoice, InvoiceItem, Product, ActivityLog
+from models import db, Invoice, InvoiceItem, Product, ActivityLog, Payment
 from datetime import datetime
+from sqlalchemy import func
 
 
 def _can_manage_invoices():
+    return current_user.role in ('admin', 'approver')
+
+
+def _can_manage_payments():
     return current_user.role in ('admin', 'approver')
 
 
@@ -24,6 +29,72 @@ def _log_invoice_activity(action, details):
         )
     )
     db.session.commit()
+
+
+def _recalculate_invoice_payment(invoice):
+    total = round(float(invoice.total or 0), 2)
+    paid = round(float(invoice.paid_amount or 0), 2)
+    if paid < 0:
+        paid = 0
+    if paid > total:
+        paid = total
+    balance = round(total - paid, 2)
+
+    invoice.paid_amount = paid
+    invoice.balance_amount = balance
+    if paid <= 0:
+        invoice.payment_status = 'unpaid'
+    elif balance <= 0:
+        invoice.payment_status = 'paid'
+    else:
+        invoice.payment_status = 'partial'
+
+
+def _sync_invoice_payment_from_transactions(invoice):
+    paid_total = (
+        db.session.query(func.coalesce(func.sum(Payment.amount), 0.0))
+        .filter(Payment.invoice_id == invoice.id)
+        .scalar()
+        or 0.0
+    )
+    invoice.paid_amount = round(float(paid_total), 2)
+
+    latest_payment = (
+        Payment.query.filter_by(invoice_id=invoice.id)
+        .order_by(Payment.payment_date.desc(), Payment.id.desc())
+        .first()
+    )
+    if latest_payment:
+        invoice.payment_date = latest_payment.payment_date
+        invoice.payment_mode = latest_payment.payment_mode
+        invoice.reference_no = latest_payment.reference_no
+    else:
+        invoice.payment_date = None
+        invoice.payment_mode = None
+        invoice.reference_no = None
+
+    _recalculate_invoice_payment(invoice)
+
+
+def _invoice_financial_snapshot(invoice):
+    return (
+        f"status={invoice.payment_status or '-'}"
+        f", paid={round(float(invoice.paid_amount or 0), 2)}"
+        f", balance={round(float(invoice.balance_amount if invoice.balance_amount is not None else invoice.total or 0), 2)}"
+        f", total={round(float(invoice.total or 0), 2)}"
+    )
+
+
+def _payment_snapshot(payment):
+    payment_date = payment.payment_date.strftime('%Y-%m-%d') if payment.payment_date else '-'
+    return (
+        f"id={payment.id}"
+        f", amount={round(float(payment.amount or 0), 2)}"
+        f", date={payment_date}"
+        f", mode={payment.payment_mode or '-'}"
+        f", ref={payment.reference_no or '-'}"
+        f", notes={payment.notes or '-'}"
+    )
 
 @invoices_bp.route('/export/excel')
 @login_required
@@ -123,6 +194,7 @@ def track_invoice_print(invoice_id):
 @login_required
 def view_invoice(invoice_id):
     invoice = Invoice.query.get_or_404(invoice_id)
+    payments = Payment.query.filter_by(invoice_id=invoice.id).order_by(Payment.payment_date.desc(), Payment.id.desc()).all()
     _log_invoice_activity(
         'Invoice Viewed',
         f'Invoice {invoice.invoice_number} viewed for customer {invoice.customer_name}',
@@ -130,7 +202,209 @@ def view_invoice(invoice_id):
     items = invoice.items
     from models import Company
     company = Company.query.first()
-    return render_template('invoices/view.html', invoice=invoice, items=items, company=company)
+    return render_template('invoices/view.html', invoice=invoice, items=items, company=company, payments=payments)
+
+
+@invoices_bp.route('/<int:invoice_id>/receive-payment', methods=['GET', 'POST'])
+@login_required
+def receive_payment(invoice_id):
+    invoice = Invoice.query.get_or_404(invoice_id)
+    can_manage_payments = _can_manage_payments()
+    today = datetime.now().strftime('%Y-%m-%d')
+
+    if request.method == 'POST':
+        amount = request.form.get('amount', type=float)
+        payment_date_str = request.form.get('payment_date', '').strip()
+        payment_mode = request.form.get('payment_mode', '').strip()
+        reference_no = request.form.get('reference_no', '').strip()
+        notes = request.form.get('notes', '').strip()
+
+        if not amount or amount <= 0:
+            flash('Enter a valid payment amount.', 'danger')
+            return redirect(url_for('invoices.receive_payment', invoice_id=invoice.id))
+        if amount > (invoice.balance_amount or 0):
+            flash('Payment amount cannot be greater than pending balance.', 'danger')
+            return redirect(url_for('invoices.receive_payment', invoice_id=invoice.id))
+
+        payment_date = datetime.now()
+        if payment_date_str:
+            try:
+                payment_date = datetime.strptime(payment_date_str, '%Y-%m-%d')
+            except ValueError:
+                flash('Payment date format is invalid.', 'danger')
+                return redirect(url_for('invoices.receive_payment', invoice_id=invoice.id))
+
+        payment = Payment(
+            invoice_id=invoice.id,
+            amount=round(amount, 2),
+            payment_date=payment_date,
+            payment_mode=payment_mode or None,
+            reference_no=reference_no or None,
+            notes=notes or None,
+            received_by=current_user.id,
+        )
+        db.session.add(payment)
+        db.session.flush()
+        _sync_invoice_payment_from_transactions(invoice)
+
+        db.session.add(
+            ActivityLog(
+                user_id=current_user.id,
+                username=current_user.username,
+                action='Invoice Payment Received',
+                details=(
+                    f'Invoice {invoice.invoice_number} received payment={round(amount, 2)} '
+                    f'mode={payment_mode or "-"} ref={reference_no or "-"} status={invoice.payment_status}'
+                ),
+            )
+        )
+        db.session.commit()
+        flash('Payment recorded successfully.', 'success')
+        return redirect(url_for('invoices.view_invoice', invoice_id=invoice.id))
+
+    payments = Payment.query.filter_by(invoice_id=invoice.id).order_by(Payment.payment_date.desc(), Payment.id.desc()).all()
+    return render_template('invoices/receive_payment.html', invoice=invoice, payments=payments, today=today, can_manage_payments=can_manage_payments)
+
+
+@invoices_bp.route('/payments/<int:payment_id>/edit', methods=['GET', 'POST'])
+@login_required
+def edit_payment(payment_id):
+    invoice_id_hint = request.values.get('invoice_id', type=int)
+    payment = Payment.query.get(payment_id)
+    if payment is None:
+        _log_invoice_activity(
+            'Invoice Payment Edit Miss',
+            f'Payment id={payment_id} not found during edit. Possibly already reversed/changed.',
+        )
+        flash('Payment is no longer available. It may have been reversed by another user.', 'warning')
+        if invoice_id_hint:
+            return redirect(url_for('invoices.receive_payment', invoice_id=invoice_id_hint))
+        return redirect(url_for('invoices.crud_invoices'))
+    invoice = Invoice.query.get_or_404(payment.invoice_id)
+
+    if not _can_manage_payments():
+        _log_invoice_activity(
+            'Invoice Payment Edit Denied',
+            f'Role {current_user.role} attempted payment edit: invoice={invoice.invoice_number}, {_payment_snapshot(payment)}',
+        )
+        flash('Only admin or approver can edit payments.', 'danger')
+        return redirect(url_for('invoices.receive_payment', invoice_id=invoice.id))
+
+    if request.method == 'POST':
+        amount = request.form.get('amount', type=float)
+        payment_date_str = request.form.get('payment_date', '').strip()
+        payment_mode = request.form.get('payment_mode', '').strip()
+        reference_no = request.form.get('reference_no', '').strip()
+        notes = request.form.get('notes', '').strip()
+
+        if not amount or amount <= 0:
+            flash('Enter a valid payment amount.', 'danger')
+            return redirect(url_for('invoices.edit_payment', payment_id=payment.id))
+
+        paid_excluding_current = round(float(invoice.paid_amount or 0) - float(payment.amount or 0), 2)
+        max_allowed = round(float(invoice.total or 0) - paid_excluding_current, 2)
+        if amount > max_allowed:
+            flash('Payment amount is too high for this invoice.', 'danger')
+            return redirect(url_for('invoices.edit_payment', payment_id=payment.id))
+
+        payment_date = payment.payment_date or datetime.now()
+        if payment_date_str:
+            try:
+                payment_date = datetime.strptime(payment_date_str, '%Y-%m-%d')
+            except ValueError:
+                flash('Payment date format is invalid.', 'danger')
+                return redirect(url_for('invoices.edit_payment', payment_id=payment.id))
+
+        before_payment = _payment_snapshot(payment)
+        before_invoice = _invoice_financial_snapshot(invoice)
+
+        payment.amount = round(amount, 2)
+        payment.payment_date = payment_date
+        payment.payment_mode = payment_mode or None
+        payment.reference_no = reference_no or None
+        payment.notes = notes or None
+
+        _sync_invoice_payment_from_transactions(invoice)
+        after_payment = _payment_snapshot(payment)
+        after_invoice = _invoice_financial_snapshot(invoice)
+
+        db.session.add(
+            ActivityLog(
+                user_id=current_user.id,
+                username=current_user.username,
+                action='Invoice Payment Edited',
+                details=(
+                    f'Invoice {invoice.invoice_number} payment edited; '
+                    f'before_payment=[{before_payment}] after_payment=[{after_payment}]; '
+                    f'before_invoice=[{before_invoice}] after_invoice=[{after_invoice}]'
+                ),
+            )
+        )
+        db.session.commit()
+        flash('Payment updated successfully.', 'success')
+        return redirect(url_for('invoices.receive_payment', invoice_id=invoice.id))
+
+    return render_template('invoices/edit_payment.html', invoice=invoice, payment=payment)
+
+
+@invoices_bp.route('/payments/<int:payment_id>/reverse', methods=['POST'])
+@login_required
+def reverse_payment(payment_id):
+    invoice_id_hint = request.values.get('invoice_id', type=int)
+    payment = Payment.query.get(payment_id)
+    if payment is None:
+        _log_invoice_activity(
+            'Invoice Payment Reverse Miss',
+            f'Payment id={payment_id} not found during reversal. Possibly already reversed/changed.',
+        )
+        flash('Payment is already reversed or no longer available.', 'warning')
+        if invoice_id_hint:
+            return redirect(url_for('invoices.receive_payment', invoice_id=invoice_id_hint))
+        return redirect(url_for('invoices.crud_invoices'))
+    invoice = Invoice.query.get_or_404(payment.invoice_id)
+    reversal_reason = request.form.get('reversal_reason', '').strip()
+
+    if not _can_manage_payments():
+        _log_invoice_activity(
+            'Invoice Payment Reverse Denied',
+            (
+                f'Role {current_user.role} attempted payment reversal: '
+                f'invoice={invoice.invoice_number}, {_payment_snapshot(payment)}, '
+                f'reason={reversal_reason or "-"}'
+            ),
+        )
+        flash('Only admin or approver can reverse payments.', 'danger')
+        return redirect(url_for('invoices.receive_payment', invoice_id=invoice.id))
+
+    if not reversal_reason:
+        flash('Reversal reason is required.', 'danger')
+        return redirect(url_for('invoices.receive_payment', invoice_id=invoice.id))
+
+    before_payment = _payment_snapshot(payment)
+    before_invoice = _invoice_financial_snapshot(invoice)
+    invoice_number = invoice.invoice_number
+
+    db.session.delete(payment)
+    db.session.flush()
+    _sync_invoice_payment_from_transactions(invoice)
+    after_invoice = _invoice_financial_snapshot(invoice)
+
+    db.session.add(
+        ActivityLog(
+            user_id=current_user.id,
+            username=current_user.username,
+            action='Invoice Payment Reversed',
+            details=(
+                f'Invoice {invoice_number} payment reversed; '
+                f'removed_payment=[{before_payment}]; '
+                f'before_invoice=[{before_invoice}] after_invoice=[{after_invoice}]; '
+                f'reversal_reason={reversal_reason}'
+            ),
+        )
+    )
+    db.session.commit()
+    flash('Payment reversed successfully.', 'success')
+    return redirect(url_for('invoices.receive_payment', invoice_id=invoice.id))
 
 
 def get_next_invoice_number():
@@ -218,6 +492,30 @@ def crud_invoices():
         total = round(total, 2)
         cgst = round(cgst, 2)
         sgst = round(sgst, 2)
+
+        payment_type = (request.form.get('billing_payment_type') or 'credit').strip().lower()
+        payment_mode = (request.form.get('billing_payment_mode') or '').strip()
+        reference_no = (request.form.get('billing_reference_no') or '').strip()
+        payment_notes = (request.form.get('billing_payment_notes') or '').strip()
+        amount_received_raw = (request.form.get('billing_amount_received') or '').strip()
+
+        amount_received = 0.0
+        if payment_type == 'pay_now':
+            try:
+                amount_received = round(float(amount_received_raw), 2)
+            except (TypeError, ValueError):
+                amount_received = 0.0
+
+            if amount_received <= 0:
+                flash('For Pay Now, enter a valid received amount.', 'danger')
+                return redirect(url_for('invoices.crud_invoices'))
+            if not payment_mode:
+                flash('For Pay Now, select payment mode.', 'danger')
+                return redirect(url_for('invoices.crud_invoices'))
+            if payment_mode.lower() != 'cash' and amount_received > total:
+                flash('For UPI/Card/Bank, received amount cannot exceed invoice total.', 'danger')
+                return redirect(url_for('invoices.crud_invoices'))
+
         if iid:
             invoice = Invoice.query.get(iid)
             if invoice:
@@ -228,6 +526,7 @@ def crud_invoices():
                 invoice.total = total
                 invoice.cgst = cgst
                 invoice.sgst = sgst
+                _recalculate_invoice_payment(invoice)
                 # Remove old items
                 InvoiceItem.query.filter_by(invoice_id=invoice.id).delete()
                 db.session.flush()
@@ -244,6 +543,13 @@ def crud_invoices():
                 db.session.commit()
                 flash('Invoice updated!', 'success')
         else:
+            applied_amount = 0.0
+            change_returned = 0.0
+            if payment_type == 'pay_now':
+                applied_amount = round(min(amount_received, total), 2)
+                if payment_mode.lower() == 'cash':
+                    change_returned = round(amount_received - applied_amount, 2)
+
             invoice = Invoice(
                 invoice_number=get_next_invoice_number(),
                 customer_name=customer_name,
@@ -253,22 +559,66 @@ def crud_invoices():
                 total=total,
                 cgst=cgst,
                 sgst=sgst,
+                paid_amount=0,
+                balance_amount=total,
+                payment_status='unpaid',
                 user_id=current_user.id
             )
             db.session.add(invoice)
             db.session.flush()
             for item in items:
                 db.session.add(InvoiceItem(invoice_id=invoice.id, **item))
+
+            if payment_type == 'pay_now' and applied_amount > 0:
+                bill_time_notes = payment_notes
+                bill_time_meta = f'bill_time_received={amount_received:.2f}; change_returned={change_returned:.2f}'
+                if bill_time_notes:
+                    bill_time_notes = f'{bill_time_notes} | {bill_time_meta}'
+                else:
+                    bill_time_notes = bill_time_meta
+
+                payment = Payment(
+                    invoice_id=invoice.id,
+                    amount=applied_amount,
+                    payment_date=datetime.now(),
+                    payment_mode=payment_mode,
+                    reference_no=reference_no or None,
+                    notes=bill_time_notes,
+                    received_by=current_user.id,
+                )
+                db.session.add(payment)
+                db.session.flush()
+                _sync_invoice_payment_from_transactions(invoice)
+
             db.session.add(
                 ActivityLog(
                     user_id=current_user.id,
                     username=current_user.username,
                     action='Invoice Created',
-                    details=f'Invoice {invoice.invoice_number} created for customer {customer_name}',
+                    details=(
+                        f'Invoice {invoice.invoice_number} created for customer {customer_name}; '
+                        f'payment_type={payment_type}; '
+                        f'amount_received={round(amount_received, 2)}; '
+                        f'applied={round(applied_amount, 2)}; '
+                        f'change_returned={round(change_returned, 2)}; '
+                        f'payment_mode={payment_mode or "-"}; '
+                        f'reference={reference_no or "-"}; '
+                        f'status={invoice.payment_status}'
+                    ),
                 )
             )
             db.session.commit()
-            flash('Invoice added!', 'success')
+            if payment_type == 'pay_now':
+                flash(
+                    (
+                        f'Invoice added. Received: {amount_received:.2f}, '
+                        f'Applied: {applied_amount:.2f}, '
+                        f'Change Returned: {change_returned:.2f}.'
+                    ),
+                    'success',
+                )
+            else:
+                flash('Invoice added!', 'success')
         return redirect(url_for('invoices.crud_invoices'))
     # GET
     from_date = request.args.get('from_date')
@@ -278,7 +628,6 @@ def crud_invoices():
         from_date = to_date = today
     search = request.args.get('search', '')
     query = Invoice.query
-    from sqlalchemy import func
     if from_date:
         query = query.filter(func.date(Invoice.date) >= from_date)
     if to_date:

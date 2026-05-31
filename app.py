@@ -33,9 +33,11 @@ app.config.from_object(Config)
 
 
 
-from models import db, User
+from models import db, User, ensure_billing_schema
 from flask_login import LoginManager, current_user
 db.init_app(app)
+with app.app_context():
+    ensure_billing_schema()
 login_manager = LoginManager(app)
 login_manager.login_view = 'auth.login'
 

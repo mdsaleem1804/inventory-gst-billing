@@ -1,0 +1,165 @@
+{% extends 'base.html' %}
+{% block title %}Payments Report{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="mb-0">Payments Report</h2>
+  <div>
+    <button onclick="window.print()" class="btn btn-outline-secondary me-2">Print</button>
+    <a href="{{ url_for('reports.payment_report', from_date=from_date, to_date=to_date, search=search, payment_mode=payment_mode, status=status, export='csv') }}" class="btn btn-outline-primary me-2">Export CSV</a>
+    <a href="{{ url_for('reports.payment_report', from_date=from_date, to_date=to_date, search=search, payment_mode=payment_mode, status=status, export='excel') }}" class="btn btn-outline-success">Export Excel</a>
+  </div>
+</div>
+
+<form method="get" class="row g-3 mb-3">
+  <div class="col-md-2">
+    <label class="form-label">From</label>
+    <input type="date" name="from_date" class="form-control" value="{{ from_date }}">
+  </div>
+  <div class="col-md-2">
+    <label class="form-label">To</label>
+    <input type="date" name="to_date" class="form-control" value="{{ to_date }}">
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Search</label>
+    <input type="text" name="search" class="form-control" value="{{ search|default('') }}" placeholder="Customer, Invoice #...">
+  </div>
+  <div class="col-md-2">
+    <label class="form-label">Payment Mode</label>
+    <select name="payment_mode" class="form-select">
+      <option value="">All Modes</option>
+      {% for mode in payment_modes %}
+      <option value="{{ mode }}" {% if payment_mode == mode %}selected{% endif %}>{{ mode }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-2">
+    <label class="form-label">Invoice Status</label>
+    <select name="status" class="form-select">
+      <option value="">All Status</option>
+      <option value="paid" {% if status == 'paid' %}selected{% endif %}>Paid</option>
+      <option value="partial" {% if status == 'partial' %}selected{% endif %}>Partial</option>
+      <option value="unpaid" {% if status == 'unpaid' %}selected{% endif %}>Unpaid</option>
+    </select>
+  </div>
+  <div class="col-md-1 align-self-end">
+    <button type="submit" class="btn btn-primary">Filter</button>
+  </div>
+</form>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card border-0 bg-light h-100">
+      <div class="card-body">
+        <div class="text-muted small">Collected In Filter</div>
+        <div class="h5 mb-0">{{ filtered_collected|indian_currency }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 bg-light h-100">
+      <div class="card-body">
+        <div class="text-muted small">Collected Today</div>
+        <div class="h5 mb-0">{{ today_collected|indian_currency }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 bg-light h-100">
+      <div class="card-body">
+        <div class="text-muted small">Collected Yesterday</div>
+        <div class="h5 mb-0">{{ yesterday_collected|indian_currency }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card border-0 bg-light h-100">
+      <div class="card-body">
+        <div class="text-muted small">Outstanding Total</div>
+        <div class="h5 mb-0">{{ outstanding_total|indian_currency }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header">Payment History</div>
+  <div class="table-responsive">
+    <table class="table table-bordered table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Date</th>
+          <th>Invoice #</th>
+          <th>Customer</th>
+          <th>Mode</th>
+          <th>Amount</th>
+          <th>Status</th>
+          <th>Invoice Total</th>
+          <th>Paid</th>
+          <th>Balance</th>
+          <th>Reference</th>
+          <th>Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for pay, inv in payment_rows %}
+        <tr>
+          <td>{{ pay.payment_date.strftime('%Y-%m-%d') if pay.payment_date else '-' }}</td>
+          <td>{{ inv.invoice_number }}</td>
+          <td>{{ inv.customer_name }}</td>
+          <td>{{ pay.payment_mode or '-' }}</td>
+          <td class="text-end">{{ pay.amount|indian_currency }}</td>
+          <td>
+            {% if inv.payment_status == 'paid' %}
+            <span class="badge bg-success">Paid</span>
+            {% elif inv.payment_status == 'partial' %}
+            <span class="badge bg-warning text-dark">Partial</span>
+            {% else %}
+            <span class="badge bg-danger">Unpaid</span>
+            {% endif %}
+          </td>
+          <td class="text-end">{{ inv.total|indian_currency }}</td>
+          <td class="text-end">{{ (inv.paid_amount if inv.paid_amount is not none else 0)|indian_currency }}</td>
+          <td class="text-end">{{ (inv.balance_amount if inv.balance_amount is not none else inv.total)|indian_currency }}</td>
+          <td>{{ pay.reference_no or '-' }}</td>
+          <td>{{ pay.notes or '-' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="11" class="text-center">No payment records found.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">Customer Payment Summary</div>
+  <div class="table-responsive">
+    <table class="table table-bordered table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Customer</th>
+          <th>Invoices</th>
+          <th>Billed Total</th>
+          <th>Paid Total</th>
+          <th>Balance Total</th>
+          <th>Collected In Filter</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in customer_summaries %}
+        <tr>
+          <td>{{ row.customer_name }}</td>
+          <td>{{ row.invoice_count }}</td>
+          <td class="text-end">{{ row.billed_total|indian_currency }}</td>
+          <td class="text-end">{{ row.paid_total|indian_currency }}</td>
+          <td class="text-end">{{ row.balance_total|indian_currency }}</td>
+          <td class="text-end">{{ row.collected_in_filter|indian_currency }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-center">No customer payment summary found.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -55,7 +55,7 @@
             <select name="product_id" class="form-select" required>
               <option value="">Select Product</option>
               {% for product in products %}
-              <option value="{{ product.id }}" {% if item and item.product_id == product.id %}selected{% endif %}>{{ product.name }} (GST: {{ product.gst_percent }}%)</option>
+              <option value="{{ product.id }}" data-price="{{ product.price }}" data-gst="{{ product.gst_percent }}" {% if item and item.product_id == product.id %}selected{% endif %}>{{ product.name }} (GST: {{ product.gst_percent }}%)</option>
               {% endfor %}
             </select>
           </div>
@@ -69,6 +69,73 @@
         {% endfor %}
       </div>
       <button type="button" class="btn btn-secondary mb-3" id="add-item">Add Product</button>
+
+      {% if not form_invoice %}
+      <div class="card border-0 bg-light mb-3">
+        <div class="card-body">
+          <h5 class="mb-3">Payment At Billing</h5>
+          <div class="row g-3 align-items-end">
+            <div class="col-md-3">
+              <label class="form-label">Payment Type</label>
+              <select name="billing_payment_type" id="billing_payment_type" class="form-select">
+                <option value="credit" selected>Credit (Pay Later)</option>
+                <option value="pay_now">Pay Now</option>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Payment Mode</label>
+              <select name="billing_payment_mode" id="billing_payment_mode" class="form-select" disabled>
+                <option value="">Select Mode</option>
+                <option value="Cash">Cash</option>
+                <option value="UPI">UPI</option>
+                <option value="Card">Card</option>
+                <option value="Bank Transfer">Bank Transfer</option>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Amount Received</label>
+              <input type="number" name="billing_amount_received" id="billing_amount_received" class="form-control" step="0.01" min="0.01" placeholder="0.00" disabled>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Reference No</label>
+              <input type="text" name="billing_reference_no" id="billing_reference_no" class="form-control" maxlength="64" disabled>
+            </div>
+            <div class="col-md-12">
+              <label class="form-label">Payment Notes</label>
+              <input type="text" name="billing_payment_notes" id="billing_payment_notes" class="form-control" maxlength="256" placeholder="Optional notes" disabled>
+            </div>
+          </div>
+          <small class="text-muted d-block mt-2">
+            For cash, received amount can be greater than invoice total and extra will be treated as change returned.
+            For UPI/Card/Bank, overpayment is not allowed.
+          </small>
+          <div id="non_cash_overpay_warning" class="small text-danger mt-2 d-none">
+            For UPI/Card/Bank, received amount cannot exceed the estimated invoice total.
+          </div>
+          <div class="row g-3 mt-1">
+            <div class="col-md-4">
+              <div class="border rounded p-2 bg-white">
+                <div class="small text-muted">Estimated Invoice Total</div>
+                <div class="fw-bold" id="preview_estimated_total">0.00</div>
+              </div>
+            </div>
+            <div class="col-md-4">
+              <div class="border rounded p-2 bg-white">
+                <div class="small text-muted">Applied Amount</div>
+                <div class="fw-bold text-success" id="preview_applied_amount">0.00</div>
+              </div>
+            </div>
+            <div class="col-md-4">
+              <div class="border rounded p-2 bg-white">
+                <div class="small text-muted">Change Returned</div>
+                <div class="fw-bold text-primary" id="preview_change_returned">0.00</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
       <div>
         <button type="submit" class="btn btn-primary">{{ 'Update' if form_invoice else 'Save' }} Invoice</button>
         {% if form_invoice %}
@@ -104,6 +171,9 @@
       <th>Date</th>
       <th>Customer</th>
       <th>Total</th>
+      <th>Paid</th>
+      <th>Balance</th>
+      <th>Status</th>
       <th>CGST</th>
       <th>SGST</th>
       <th>Actions</th>
@@ -116,6 +186,17 @@
       <td>{{ invoice.date.strftime('%Y-%m-%d') }}</td>
       <td>{{ invoice.customer_name }}</td>
       <td class="text-end">{{ invoice.total }}</td>
+      <td class="text-end">{{ invoice.paid_amount or 0 }}</td>
+      <td class="text-end">{{ invoice.balance_amount if invoice.balance_amount is not none else invoice.total }}</td>
+      <td>
+        {% if invoice.payment_status == 'paid' %}
+        <span class="badge bg-success">Paid</span>
+        {% elif invoice.payment_status == 'partial' %}
+        <span class="badge bg-warning text-dark">Partial</span>
+        {% else %}
+        <span class="badge bg-danger">Unpaid</span>
+        {% endif %}
+      </td>
       <td class="text-end">{{ invoice.cgst }}</td>
       <td class="text-end">{{ invoice.sgst }}</td>
       <td>
@@ -127,10 +208,11 @@
         </form>
         {% endif %}
         <a href="{{ url_for('invoices.view_invoice', invoice_id=invoice.id) }}" class="btn btn-sm btn-secondary">View</a>
+        <a href="{{ url_for('invoices.receive_payment', invoice_id=invoice.id) }}" class="btn btn-sm btn-success">Receive Payment</a>
       </td>
     </tr>
     {% else %}
-    <tr><td colspan="7" class="text-center">No invoices found.</td></tr>
+    <tr><td colspan="10" class="text-center">No invoices found.</td></tr>
     {% endfor %}
   </tbody>
 </table>
@@ -148,8 +230,129 @@ document.addEventListener('click', function(e) {
     var rows = document.querySelectorAll('.invoice-item-row');
     if (rows.length > 1) {
       e.target.closest('.invoice-item-row').remove();
+      updateBillingPreview();
     }
   }
 });
+
+function toggleBillingPaymentFields() {
+  var typeEl = document.getElementById('billing_payment_type');
+  if (!typeEl) return;
+  var isPayNow = typeEl.value === 'pay_now';
+  var fields = [
+    document.getElementById('billing_payment_mode'),
+    document.getElementById('billing_amount_received'),
+    document.getElementById('billing_reference_no'),
+    document.getElementById('billing_payment_notes')
+  ];
+  fields.forEach(function(field) {
+    if (!field) return;
+    field.disabled = !isPayNow;
+    field.required = isPayNow && (field.id === 'billing_payment_mode' || field.id === 'billing_amount_received');
+    if (!isPayNow) {
+      field.value = '';
+    }
+  });
+}
+
+var billingPaymentType = document.getElementById('billing_payment_type');
+if (billingPaymentType) {
+  billingPaymentType.addEventListener('change', toggleBillingPaymentFields);
+  toggleBillingPaymentFields();
+}
+
+function parseNumber(value) {
+  var n = parseFloat(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function formatAmount(value) {
+  return parseNumber(value).toFixed(2);
+}
+
+function estimateInvoiceTotal() {
+  var rows = document.querySelectorAll('.invoice-item-row');
+  var total = 0;
+  rows.forEach(function(row) {
+    var select = row.querySelector('select[name="product_id"]');
+    var qtyInput = row.querySelector('input[name="quantity"]');
+    if (!select || !qtyInput) return;
+    var selectedOption = select.options[select.selectedIndex];
+    if (!selectedOption || !selectedOption.value) return;
+    var price = parseNumber(selectedOption.getAttribute('data-price'));
+    var gst = parseNumber(selectedOption.getAttribute('data-gst'));
+    var qty = parseNumber(qtyInput.value);
+    if (qty <= 0) return;
+    var base = price * qty;
+    total += base + (base * gst / 100);
+  });
+  return parseNumber(total.toFixed(2));
+}
+
+function updateBillingPreview() {
+  var totalEl = document.getElementById('preview_estimated_total');
+  var appliedEl = document.getElementById('preview_applied_amount');
+  var changeEl = document.getElementById('preview_change_returned');
+  var nonCashWarningEl = document.getElementById('non_cash_overpay_warning');
+  if (!totalEl || !appliedEl || !changeEl) return;
+
+  var estimatedTotal = estimateInvoiceTotal();
+  var paymentTypeEl = document.getElementById('billing_payment_type');
+  var paymentModeEl = document.getElementById('billing_payment_mode');
+  var amountReceivedEl = document.getElementById('billing_amount_received');
+
+  var paymentType = paymentTypeEl ? paymentTypeEl.value : 'credit';
+  var paymentMode = paymentModeEl ? paymentModeEl.value.toLowerCase() : '';
+  var amountReceived = amountReceivedEl ? parseNumber(amountReceivedEl.value) : 0;
+
+  var appliedAmount = 0;
+  var changeReturned = 0;
+  var isNonCashOverpay = false;
+
+  if (paymentType === 'pay_now') {
+    appliedAmount = Math.min(amountReceived, estimatedTotal);
+    if (paymentMode === 'cash' && amountReceived > estimatedTotal) {
+      changeReturned = amountReceived - estimatedTotal;
+    }
+    if (paymentMode && paymentMode !== 'cash' && amountReceived > estimatedTotal) {
+      isNonCashOverpay = true;
+    }
+  }
+
+  totalEl.textContent = formatAmount(estimatedTotal);
+  appliedEl.textContent = formatAmount(appliedAmount);
+  changeEl.textContent = formatAmount(changeReturned);
+  if (nonCashWarningEl) {
+    if (isNonCashOverpay) {
+      nonCashWarningEl.classList.remove('d-none');
+    } else {
+      nonCashWarningEl.classList.add('d-none');
+    }
+  }
+}
+
+document.addEventListener('change', function(e) {
+  if (
+    e.target.matches('select[name="product_id"]') ||
+    e.target.matches('input[name="quantity"]') ||
+    e.target.matches('#billing_payment_type') ||
+    e.target.matches('#billing_payment_mode') ||
+    e.target.matches('#billing_amount_received')
+  ) {
+    updateBillingPreview();
+  }
+});
+
+document.addEventListener('input', function(e) {
+  if (e.target.matches('input[name="quantity"]') || e.target.matches('#billing_amount_received')) {
+    updateBillingPreview();
+  }
+});
+
+document.getElementById('add-item').addEventListener('click', function() {
+  setTimeout(updateBillingPreview, 0);
+});
+
+updateBillingPreview();
 </script>
 {% endblock %}

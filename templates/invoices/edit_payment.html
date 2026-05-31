@@ -1,0 +1,60 @@
+{% extends 'base.html' %}
+{% block title %}Edit Payment - {{ invoice.invoice_number }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="mb-0">Edit Payment</h2>
+  <a href="{{ url_for('invoices.receive_payment', invoice_id=invoice.id) }}" class="btn btn-outline-secondary">Back to Payments</a>
+</div>
+
+<div class="card mb-3">
+  <div class="card-body">
+    <div class="row g-2">
+      <div class="col-md-3"><strong>Invoice #:</strong> {{ invoice.invoice_number }}</div>
+      <div class="col-md-3"><strong>Customer:</strong> {{ invoice.customer_name }}</div>
+      <div class="col-md-2"><strong>Total:</strong> {{ invoice.total|indian_currency }}</div>
+      <div class="col-md-2"><strong>Paid:</strong> {{ (invoice.paid_amount or 0)|indian_currency }}</div>
+      <div class="col-md-2"><strong>Balance:</strong> {{ (invoice.balance_amount if invoice.balance_amount is not none else invoice.total)|indian_currency }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body">
+    <form method="post">
+      <input type="hidden" name="invoice_id" value="{{ invoice.id }}">
+      <div class="row g-3 align-items-end">
+        <div class="col-md-2">
+          <label class="form-label">Amount</label>
+          <input type="number" name="amount" class="form-control" step="0.01" min="0.01" value="{{ payment.amount }}" required>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Payment Date</label>
+          <input type="date" name="payment_date" class="form-control" value="{{ payment.payment_date.strftime('%Y-%m-%d') if payment.payment_date else '' }}">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Mode</label>
+          <select name="payment_mode" class="form-select">
+            <option value="" {% if not payment.payment_mode %}selected{% endif %}>Select</option>
+            <option value="cash" {% if payment.payment_mode == 'cash' %}selected{% endif %}>Cash</option>
+            <option value="upi" {% if payment.payment_mode == 'upi' %}selected{% endif %}>UPI</option>
+            <option value="bank_transfer" {% if payment.payment_mode == 'bank_transfer' %}selected{% endif %}>Bank Transfer</option>
+            <option value="card" {% if payment.payment_mode == 'card' %}selected{% endif %}>Card</option>
+            <option value="cheque" {% if payment.payment_mode == 'cheque' %}selected{% endif %}>Cheque</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Reference No</label>
+          <input type="text" name="reference_no" class="form-control" maxlength="64" value="{{ payment.reference_no or '' }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Notes</label>
+          <input type="text" name="notes" class="form-control" maxlength="256" value="{{ payment.notes or '' }}">
+        </div>
+      </div>
+      <div class="mt-3">
+        <button type="submit" class="btn btn-primary">Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
