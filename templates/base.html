@@ -50,6 +50,7 @@
             <li><a class="dropdown-item" href="/settings/backup">Data Backup/Restore</a></li>
             {% if current_user.is_authenticated and current_user.role == 'admin' %}
             <li><a class="dropdown-item" href="/users/">Users</a></li>
+            <li><a class="dropdown-item" href="/users/activity-logs">Activity Logs</a></li>
             {% endif %}
           </ul>
         </li>

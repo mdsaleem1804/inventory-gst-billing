@@ -6,8 +6,24 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from flask_login import login_required, current_user
 from .routes import invoices_bp
-from models import db, Invoice, InvoiceItem, Product
+from models import db, Invoice, InvoiceItem, Product, ActivityLog
 from datetime import datetime
+
+
+def _can_manage_invoices():
+    return current_user.role in ('admin', 'approver')
+
+
+def _log_invoice_activity(action, details):
+    db.session.add(
+        ActivityLog(
+            user_id=current_user.id,
+            username=current_user.username,
+            action=action,
+            details=details,
+        )
+    )
+    db.session.commit()
 
 @invoices_bp.route('/export/excel')
 @login_required
@@ -29,6 +45,7 @@ def export_invoices_excel():
     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
         df.to_excel(writer, index=False, sheet_name='Invoices')
     buffer.seek(0)
+    _log_invoice_activity('Invoice Exported Excel', f'Exported {len(data)} invoices to Excel')
     return send_file(buffer, as_attachment=True, download_name='invoices.xlsx', mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 @invoices_bp.route('/<int:invoice_id>/pdf')
@@ -91,12 +108,25 @@ def download_invoice_pdf(invoice_id):
     p.showPage()
     p.save()
     buffer.seek(0)
+    _log_invoice_activity('Invoice PDF Downloaded', f'Invoice {invoice.invoice_number} PDF downloaded')
     return send_file(buffer, as_attachment=True, download_name=f'invoice_{invoice.invoice_number}.pdf', mimetype='application/pdf')
+
+
+@invoices_bp.route('/<int:invoice_id>/print-track', methods=['POST'])
+@login_required
+def track_invoice_print(invoice_id):
+    invoice = Invoice.query.get_or_404(invoice_id)
+    _log_invoice_activity('Invoice Print Clicked', f'Print clicked for invoice {invoice.invoice_number}')
+    return ('', 204)
 
 @invoices_bp.route('/<int:invoice_id>')
 @login_required
 def view_invoice(invoice_id):
     invoice = Invoice.query.get_or_404(invoice_id)
+    _log_invoice_activity(
+        'Invoice Viewed',
+        f'Invoice {invoice.invoice_number} viewed for customer {invoice.customer_name}',
+    )
     items = invoice.items
     from models import Company
     company = Company.query.first()
@@ -118,6 +148,7 @@ def get_next_invoice_number():
 def crud_invoices():
     edit_id = request.args.get('edit_id', type=int)
     form_invoice = None
+    can_manage_invoices = _can_manage_invoices()
     products = Product.query.all()
     from models import Customer
     customers = Customer.query.order_by(Customer.name).all()
@@ -125,16 +156,40 @@ def crud_invoices():
         # Delete
         delete_id = request.form.get('delete_id', type=int)
         if delete_id:
+            if not can_manage_invoices:
+                _log_invoice_activity(
+                    'Invoice Delete Denied',
+                    f'Role {current_user.role} attempted to delete invoice_id={delete_id}',
+                )
+                flash('Only admin or approver can delete invoices.', 'danger')
+                return redirect(url_for('invoices.crud_invoices'))
             invoice = Invoice.query.get(delete_id)
             if invoice:
+                invoice_number = invoice.invoice_number
+                customer_name = invoice.customer_name
                 # Delete items first
                 InvoiceItem.query.filter_by(invoice_id=invoice.id).delete()
                 db.session.delete(invoice)
+                db.session.add(
+                    ActivityLog(
+                        user_id=current_user.id,
+                        username=current_user.username,
+                        action='Invoice Deleted',
+                        details=f'Invoice {invoice_number} deleted for customer {customer_name}',
+                    )
+                )
                 db.session.commit()
                 flash('Invoice deleted!', 'success')
             return redirect(url_for('invoices.crud_invoices'))
         # Add or Update
         iid = request.form.get('id', type=int)
+        if iid and not can_manage_invoices:
+            _log_invoice_activity(
+                'Invoice Edit Denied',
+                f'Role {current_user.role} attempted to edit invoice_id={iid}',
+            )
+            flash('Only admin or approver can edit invoices.', 'danger')
+            return redirect(url_for('invoices.crud_invoices'))
         customer_id = request.form.get('customer_id', type=int)
         customer = Customer.query.get(customer_id) if customer_id else None
         customer_name = customer.name if customer else ''
@@ -166,6 +221,7 @@ def crud_invoices():
         if iid:
             invoice = Invoice.query.get(iid)
             if invoice:
+                invoice_number = invoice.invoice_number
                 invoice.customer_name = customer_name
                 invoice.customer_gstin = customer_gstin
                 invoice.customer_address = customer_address
@@ -177,6 +233,14 @@ def crud_invoices():
                 db.session.flush()
                 for item in items:
                     db.session.add(InvoiceItem(invoice_id=invoice.id, **item))
+                db.session.add(
+                    ActivityLog(
+                        user_id=current_user.id,
+                        username=current_user.username,
+                        action='Invoice Updated',
+                        details=f'Invoice {invoice_number} updated for customer {customer_name}',
+                    )
+                )
                 db.session.commit()
                 flash('Invoice updated!', 'success')
         else:
@@ -195,6 +259,14 @@ def crud_invoices():
             db.session.flush()
             for item in items:
                 db.session.add(InvoiceItem(invoice_id=invoice.id, **item))
+            db.session.add(
+                ActivityLog(
+                    user_id=current_user.id,
+                    username=current_user.username,
+                    action='Invoice Created',
+                    details=f'Invoice {invoice.invoice_number} created for customer {customer_name}',
+                )
+            )
             db.session.commit()
             flash('Invoice added!', 'success')
         return redirect(url_for('invoices.crud_invoices'))
@@ -216,7 +288,14 @@ def crud_invoices():
             Invoice.invoice_number.ilike(f'%{search}%') |
             Invoice.customer_name.ilike(f'%{search}%')
         )
+    if edit_id and not can_manage_invoices:
+        _log_invoice_activity(
+            'Invoice Edit Denied',
+            f'Role {current_user.role} attempted to access edit form for invoice_id={edit_id}',
+        )
+        flash('Only admin or approver can edit invoices.', 'danger')
+        return redirect(url_for('invoices.crud_invoices'))
     if edit_id:
         form_invoice = Invoice.query.get(edit_id)
     invoices = query.order_by(Invoice.created_at.desc() if hasattr(Invoice, 'created_at') else Invoice.date.desc()).all()
-    return render_template('invoices/crud.html', invoices=invoices, form_invoice=form_invoice, products=products, customers=customers, from_date=from_date, to_date=to_date, search=search)
+    return render_template('invoices/crud.html', invoices=invoices, form_invoice=form_invoice, products=products, customers=customers, from_date=from_date, to_date=to_date, search=search, can_manage_invoices=can_manage_invoices)

@@ -1,5 +1,5 @@
 
-from flask import Flask
+from flask import Flask, session, redirect, url_for, request
 from num2words import num2words as n2w
 import re
 from config import Config
@@ -34,7 +34,7 @@ app.config.from_object(Config)
 
 
 from models import db, User
-from flask_login import LoginManager
+from flask_login import LoginManager, current_user
 db.init_app(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'auth.login'
@@ -43,6 +43,18 @@ login_manager.login_view = 'auth.login'
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
+
+
+@app.before_request
+def enforce_password_change():
+    if not current_user.is_authenticated:
+        return
+    if not session.get('force_password_change'):
+        return
+    allowed_endpoints = {'auth.change_password', 'auth.logout', 'auth.login', 'static'}
+    if request.endpoint in allowed_endpoints:
+        return
+    return redirect(url_for('auth.change_password'))
 
 # Register blueprints
 def register_blueprints(app):

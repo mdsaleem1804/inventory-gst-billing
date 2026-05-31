@@ -1,0 +1,86 @@
+{% extends 'base.html' %}
+{% block title %}Activity Logs{% endblock %}
+{% block content %}
+<h2 class="mb-3">Activity Logs</h2>
+
+<form method="get" class="row g-3 align-items-end mb-3">
+  <div class="col-md-3">
+    <label for="action" class="form-label">Action</label>
+    <input type="text" id="action" name="action" class="form-control" value="{{ action }}" placeholder="Invoice Updated">
+  </div>
+  <div class="col-md-3">
+    <label for="username" class="form-label">User</label>
+    <input type="text" id="username" name="username" class="form-control" value="{{ username }}" placeholder="admin">
+  </div>
+  <div class="col-md-2">
+    <label for="from_date" class="form-label">From Date</label>
+    <input type="date" id="from_date" name="from_date" class="form-control" value="{{ from_date }}">
+  </div>
+  <div class="col-md-2">
+    <label for="to_date" class="form-label">To Date</label>
+    <input type="date" id="to_date" name="to_date" class="form-control" value="{{ to_date }}">
+  </div>
+  <div class="col-md-2">
+    <button type="submit" class="btn btn-primary">Filter</button>
+    <a href="{{ url_for('users.activity_logs') }}" class="btn btn-outline-secondary">Reset</a>
+  </div>
+</form>
+
+<div class="mb-3 d-flex gap-2">
+  <a href="{{ url_for('users.export_activity_logs', format='csv', action=action, username=username, from_date=from_date, to_date=to_date) }}" class="btn btn-outline-primary">Export CSV</a>
+  <a href="{{ url_for('users.export_activity_logs', format='excel', action=action, username=username, from_date=from_date, to_date=to_date) }}" class="btn btn-outline-success">Export Excel</a>
+</div>
+
+<div class="table-responsive">
+  <table class="table table-bordered table-hover">
+    <thead class="table-light">
+      <tr>
+        <th style="width: 70px;">ID</th>
+        <th style="width: 160px;">Timestamp</th>
+        <th style="width: 140px;">User</th>
+        <th style="width: 220px;">Action</th>
+        <th>Details</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for log in logs %}
+      <tr>
+        <td>{{ log.id }}</td>
+        <td>{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') if log.timestamp else '' }}</td>
+        <td>{{ log.username or '-' }}</td>
+        <td>{{ log.action }}</td>
+        <td>{{ log.details or '' }}</td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="5" class="text-center">No activity logs found.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if pagination and pagination.pages > 1 %}
+<nav aria-label="Activity log pagination" class="mt-3">
+  <ul class="pagination mb-0">
+    <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+      <a class="page-link" href="{{ url_for('users.activity_logs', page=pagination.prev_num, action=action, username=username, from_date=from_date, to_date=to_date) if pagination.has_prev else '#' }}">Previous</a>
+    </li>
+
+    {% for p in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+      {% if p %}
+      <li class="page-item {% if p == pagination.page %}active{% endif %}">
+        <a class="page-link" href="{{ url_for('users.activity_logs', page=p, action=action, username=username, from_date=from_date, to_date=to_date) }}">{{ p }}</a>
+      </li>
+      {% else %}
+      <li class="page-item disabled"><span class="page-link">...</span></li>
+      {% endif %}
+    {% endfor %}
+
+    <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+      <a class="page-link" href="{{ url_for('users.activity_logs', page=pagination.next_num, action=action, username=username, from_date=from_date, to_date=to_date) if pagination.has_next else '#' }}">Next</a>
+    </li>
+  </ul>
+</nav>
+{% endif %}
+{% endblock %}

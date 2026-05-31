@@ -119,11 +119,13 @@
       <td class="text-end">{{ invoice.cgst }}</td>
       <td class="text-end">{{ invoice.sgst }}</td>
       <td>
+        {% if can_manage_invoices %}
         <a href="{{ url_for('invoices.crud_invoices', edit_id=invoice.id) }}" class="btn btn-sm btn-info">Edit</a>
         <form method="post" action="{{ url_for('invoices.crud_invoices') }}" style="display:inline;">
           <input type="hidden" name="delete_id" value="{{ invoice.id }}">
           <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete this invoice?');">Delete</button>
         </form>
+        {% endif %}
         <a href="{{ url_for('invoices.view_invoice', invoice_id=invoice.id) }}" class="btn btn-sm btn-secondary">View</a>
       </td>
     </tr>

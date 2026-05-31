@@ -19,6 +19,7 @@
           <label class="form-label">Role</label>
           <select name="role" class="form-select" {% if form_user and form_user.username == 'admin' %}disabled{% endif %}>
             <option value="admin" {% if form_user and form_user.role == 'admin' %}selected{% endif %}>Admin</option>
+            <option value="approver" {% if form_user and form_user.role == 'approver' %}selected{% endif %}>Approver</option>
             <option value="staff" {% if not form_user or form_user.role == 'staff' %}selected{% endif %}>Staff</option>
           </select>
         </div>

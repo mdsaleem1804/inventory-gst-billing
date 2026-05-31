@@ -1,16 +1,10 @@
 from app import app
-from models import db, User, Company
-from sqlalchemy import inspect
+from models import db, User
 from werkzeug.security import generate_password_hash
 
 with app.app_context():
-    # Drop and recreate Company table to add new columns if needed
-    inspector = inspect(db.engine)
-    if inspector.has_table('company'):
-        Company.__table__.drop(db.engine)
-        print('Dropped Company table.')
     db.create_all()
-    # Check if admin user exists
+    # Create admin user if not exists
     if not User.query.filter_by(username='admin').first():
         admin = User(username='admin', password_hash=generate_password_hash('admin'), role='admin')
         db.session.add(admin)

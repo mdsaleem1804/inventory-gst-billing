@@ -1,41 +1,31 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app
+from flask_login import login_required, current_user
 from models import db, Company
 import os
 from werkzeug.utils import secure_filename
 
 company_bp = Blueprint('company', __name__, url_prefix='/company')
 
+
+def _require_admin():
+    if current_user.role != 'admin':
+        flash('Only admin can manage company information.', 'danger')
+        return False
+    return True
+
 @company_bp.route('/')
+@login_required
 def index():
+    if not _require_admin():
+        return redirect(url_for('dashboard.dashboard'))
     company = Company.query.first()
-    # Update company info to match attached invoice image if not already set
-    if company:
-        updated = False
-        if company.title != 'PRINCE AGENCIES':
-            company.title = 'PRINCE AGENCIES'
-            updated = True
-        header_text = 'No. 92, SAMUEL STREET, NAZARETH, TUTICORIN - 628 617'
-        if company.header != header_text:
-            company.header = header_text
-            updated = True
-        gst_number = '33CNWPP8106P1Z2'
-        if company.gst_number != gst_number:
-            company.gst_number = gst_number
-            updated = True
-        phone_number = '9566720210'
-        if company.phone_number != phone_number:
-            company.phone_number = phone_number
-            updated = True
-        address = 'No. 92, SAMUEL STREET, NAZARETH, TUTICORIN - 628 617'
-        if company.address != address:
-            company.address = address
-            updated = True
-        if updated:
-            db.session.commit()
     return render_template('company/crud.html', company=company)
 
 @company_bp.route('/add', methods=['GET', 'POST'])
+@login_required
 def add():
+    if not _require_admin():
+        return redirect(url_for('dashboard.dashboard'))
     # Only allow add if no company exists
     if Company.query.first():
         flash('Company information already exists. You can only edit or delete it.', 'warning')
@@ -61,7 +51,10 @@ def add():
     return render_template('company/add.html')
 
 @company_bp.route('/edit/<int:id>', methods=['GET', 'POST'])
+@login_required
 def edit(id):
+    if not _require_admin():
+        return redirect(url_for('dashboard.dashboard'))
     company = Company.query.get_or_404(id)
     if request.method == 'POST':
         company.title = request.form['title']
@@ -83,7 +76,10 @@ def edit(id):
 
 # Delete company info (for completeness, but only one record allowed)
 @company_bp.route('/delete/<int:id>', methods=['POST'])
+@login_required
 def delete(id):
+    if not _require_admin():
+        return redirect(url_for('dashboard.dashboard'))
     company = Company.query.get_or_404(id)
     db.session.delete(company)
     db.session.commit()

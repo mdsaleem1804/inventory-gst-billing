@@ -1,12 +1,24 @@
 from flask import render_template, request, send_file
-from flask_login import login_required
+from flask_login import login_required, current_user
 from .routes import reports_bp
-from models import Invoice, Product, Customer
+from models import db, Invoice, Product, Customer, ActivityLog
 import io
 import pandas as pd
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from datetime import datetime
+
+
+def _log_report_export(action, details):
+	db.session.add(
+		ActivityLog(
+			user_id=current_user.id,
+			username=current_user.username,
+			action=action,
+			details=details,
+		)
+	)
+	db.session.commit()
 
 
 @reports_bp.route('/sales')
@@ -42,6 +54,7 @@ def sales_report():
 		with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
 			df.to_excel(writer, index=False, sheet_name='Sales Report')
 		buffer.seek(0)
+		_log_report_export('Sales Report Exported Excel', f'Sales rows={len(invoices)} from={from_date or "-"} to={to_date or "-"} search={search or "-"}')
 		return send_file(buffer, as_attachment=True, download_name='sales_report.xlsx', mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 	if export == 'pdf':
 		buffer = io.BytesIO()
@@ -73,6 +86,7 @@ def sales_report():
 				y = height - 40
 		p.save()
 		buffer.seek(0)
+		_log_report_export('Sales Report Exported PDF', f'Sales rows={len(invoices)} from={from_date or "-"} to={to_date or "-"} search={search or "-"}')
 		return send_file(buffer, as_attachment=True, download_name='sales_report.pdf', mimetype='application/pdf')
 	return render_template('reports/sales.html', invoices=invoices, from_date=from_date, to_date=to_date, search=search)
 
@@ -102,6 +116,7 @@ def product_report():
 		with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
 			df.to_excel(writer, index=False, sheet_name='Product Report')
 		buffer.seek(0)
+		_log_report_export('Product Report Exported Excel', f'Product rows={len(products)} search={search or "-"}')
 		return send_file(buffer, as_attachment=True, download_name='product_report.xlsx', mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 	if export == 'pdf':
 		buffer = io.BytesIO()
@@ -131,6 +146,7 @@ def product_report():
 				y = height - 40
 		p.save()
 		buffer.seek(0)
+		_log_report_export('Product Report Exported PDF', f'Product rows={len(products)} search={search or "-"}')
 		return send_file(buffer, as_attachment=True, download_name='product_report.pdf', mimetype='application/pdf')
 	return render_template('reports/products.html', products=products, search=search)
 
@@ -159,6 +175,7 @@ def customer_report():
 		with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
 			df.to_excel(writer, index=False, sheet_name='Customer Report')
 		buffer.seek(0)
+		_log_report_export('Customer Report Exported Excel', f'Customer rows={len(customers)} search={search or "-"}')
 		return send_file(buffer, as_attachment=True, download_name='customer_report.xlsx', mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 	if export == 'pdf':
 		buffer = io.BytesIO()
@@ -186,5 +203,6 @@ def customer_report():
 				y = height - 40
 		p.save()
 		buffer.seek(0)
+		_log_report_export('Customer Report Exported PDF', f'Customer rows={len(customers)} search={search or "-"}')
 		return send_file(buffer, as_attachment=True, download_name='customer_report.pdf', mimetype='application/pdf')
 	return render_template('reports/customers.html', customers=customers, search=search)

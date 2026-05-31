@@ -9,9 +9,18 @@ settings_bp = Blueprint('settings', __name__, url_prefix='/settings')
 BACKUP_FOLDER = 'backups'
 DB_FILENAME = 'app.db'
 
+
+def _require_admin():
+    if current_user.role != 'admin':
+        flash('Only admin can access backup and restore settings.', 'danger')
+        return False
+    return True
+
 @settings_bp.route('/backup', methods=['GET', 'POST'])
 @login_required
 def backup_restore():
+    if not _require_admin():
+        return redirect(url_for('dashboard.dashboard'))
     if not os.path.exists(BACKUP_FOLDER):
         os.makedirs(BACKUP_FOLDER)
     backup_files = os.listdir(BACKUP_FOLDER)
@@ -25,6 +34,8 @@ def backup_restore():
             flash('Backup created successfully.', 'success')
             return redirect(url_for('settings.backup_restore'))
         elif 'restore' in request.form:
+            if not _require_admin():
+                return redirect(url_for('dashboard.dashboard'))
             restore_file = request.form.get('restore_file')
             if restore_file and restore_file in backup_files:
                 src = os.path.join(BACKUP_FOLDER, restore_file)
@@ -37,6 +48,8 @@ def backup_restore():
 @settings_bp.route('/download/<filename>')
 @login_required
 def download_backup(filename):
+    if not _require_admin():
+        return redirect(url_for('dashboard.dashboard'))
     backup_path = os.path.join(BACKUP_FOLDER, filename)
     if os.path.exists(backup_path):
         return send_file(backup_path, as_attachment=True)
