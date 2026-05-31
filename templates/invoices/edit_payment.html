@@ -3,7 +3,11 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h2 class="mb-0">Edit Payment</h2>
+  {% if return_to == 'bank_book' %}
+  <a href="{{ url_for('finance.bank_book', from_date=from_date, to_date=to_date) }}" class="btn btn-outline-secondary">Back to Bank Book</a>
+  {% else %}
   <a href="{{ url_for('invoices.receive_payment', invoice_id=invoice.id) }}" class="btn btn-outline-secondary">Back to Payments</a>
+  {% endif %}
 </div>
 
 <div class="card mb-3">
@@ -22,6 +26,9 @@
   <div class="card-body">
     <form method="post">
       <input type="hidden" name="invoice_id" value="{{ invoice.id }}">
+      <input type="hidden" name="return_to" value="{{ return_to }}">
+      <input type="hidden" name="from_date" value="{{ from_date }}">
+      <input type="hidden" name="to_date" value="{{ to_date }}">
       <div class="row g-3 align-items-end">
         <div class="col-md-2">
           <label class="form-label">Amount</label>
@@ -40,6 +47,15 @@
             <option value="bank_transfer" {% if payment.payment_mode == 'bank_transfer' %}selected{% endif %}>Bank Transfer</option>
             <option value="card" {% if payment.payment_mode == 'card' %}selected{% endif %}>Card</option>
             <option value="cheque" {% if payment.payment_mode == 'cheque' %}selected{% endif %}>Cheque</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Bank Account</label>
+          <select name="bank_account_id" class="form-select">
+            <option value="">Select</option>
+            {% for account in bank_accounts %}
+            <option value="{{ account.id }}" {% if payment.bank_account_id == account.id %}selected{% endif %}>{{ account.account_name }}</option>
+            {% endfor %}
           </select>
         </div>
         <div class="col-md-3">

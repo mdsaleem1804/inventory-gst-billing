@@ -1,0 +1,180 @@
+{% extends 'base.html' %}
+{% block title %}Bank Book{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="mb-0">Bank Book</h2>
+  <div>
+    <span class="text-muted small me-2">Bank modes considered: {{ bank_modes }}</span>
+    <a href="{{ url_for('finance.bank_book', from_date=from_date, to_date=to_date, export='csv') }}" class="btn btn-outline-primary btn-sm me-1">Export CSV</a>
+    <a href="{{ url_for('finance.bank_book', from_date=from_date, to_date=to_date, export='excel') }}" class="btn btn-outline-success btn-sm">Export Excel</a>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-body">
+    <form method="get" class="row g-3 align-items-end">
+      <div class="col-md-3">
+        <label class="form-label">From</label>
+        <input type="date" class="form-control" name="from_date" value="{{ from_date }}">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">To</label>
+        <input type="date" class="form-control" name="to_date" value="{{ to_date }}">
+      </div>
+      <div class="col-md-2">
+        <button type="submit" class="btn btn-primary">Filter</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="card border-0 bg-success-subtle h-100">
+      <div class="card-body">
+        <div class="text-muted small">Bank Inflow</div>
+        <div class="h4 mb-0 text-success">{{ inflow_total|indian_currency }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card border-0 bg-danger-subtle h-100">
+      <div class="card-body">
+        <div class="text-muted small">Bank Outflow</div>
+        <div class="h4 mb-0 text-danger">{{ outflow_total|indian_currency }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card border-0 bg-light h-100">
+      <div class="card-body">
+        <div class="text-muted small">Net Flow</div>
+        <div class="h4 mb-0 {% if net_bank_flow >= 0 %}text-success{% else %}text-danger{% endif %}">{{ net_bank_flow|indian_currency }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if unmapped_count > 0 %}
+<div class="alert alert-warning d-flex justify-content-between align-items-center mb-4" role="alert">
+  <div>
+    <strong>Unmapped Non-Cash Collections:</strong>
+    {{ unmapped_count }} entry(ies) worth {{ unmapped_total|indian_currency }} are missing bank account linkage.
+  </div>
+  <span class="small">Assign/update from Invoice Payment screens</span>
+</div>
+{% endif %}
+
+{% if recently_mapped_row %}
+<div class="card border-success mb-4">
+  <div class="card-header bg-success-subtle text-success-emphasis">Recently Mapped</div>
+  <div class="table-responsive">
+    <table class="table table-bordered table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Date</th>
+          <th>Invoice</th>
+          <th>Customer</th>
+          <th>Mode</th>
+          <th>Account</th>
+          <th>Reference</th>
+          <th class="text-end">Amount</th>
+          <th>State</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>{{ recently_mapped_row.date.strftime('%Y-%m-%d') if recently_mapped_row.date else '-' }}</td>
+          <td>
+            <a href="{{ url_for('invoices.view_invoice', invoice_id=recently_mapped_row.invoice_id) }}">{{ recently_mapped_row.invoice_number }}</a>
+          </td>
+          <td>{{ recently_mapped_row.customer_name }}</td>
+          <td>{{ recently_mapped_row.mode }}</td>
+          <td>{{ recently_mapped_row.account }}</td>
+          <td>{{ recently_mapped_row.reference }}</td>
+          <td class="text-end">{{ recently_mapped_row.amount|indian_currency }}</td>
+          <td><button type="button" class="btn btn-sm btn-success" disabled>Completed</button></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-header">Bank Ledger</div>
+  <div class="table-responsive">
+    <table class="table table-bordered table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Date</th>
+          <th>Source</th>
+          <th>Mode</th>
+          <th>Account</th>
+          <th>Reference</th>
+          <th>In</th>
+          <th>Out</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in ledger_rows %}
+        <tr>
+          <td>{{ row.date.strftime('%Y-%m-%d') if row.date else '-' }}</td>
+          <td>{{ row.source }}</td>
+          <td>{{ row.mode }}</td>
+          <td>{{ row.account }}</td>
+          <td>{{ row.reference }}</td>
+          <td class="text-end">{{ row.amount_in|indian_currency }}</td>
+          <td class="text-end">{{ row.amount_out|indian_currency }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="text-center">No bank ledger entries for selected period.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% if unmapped_rows %}
+<div class="card mt-4">
+  <div class="card-header">Unmapped Bank Transactions Cleanup</div>
+  <div class="table-responsive">
+    <table class="table table-bordered table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Date</th>
+          <th>Invoice</th>
+          <th>Customer</th>
+          <th>Mode</th>
+          <th>Reference</th>
+          <th class="text-end">Amount</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in unmapped_rows %}
+        <tr>
+          <td>{{ row.date.strftime('%Y-%m-%d') if row.date else '-' }}</td>
+          <td>
+            <a href="{{ url_for('invoices.view_invoice', invoice_id=row.invoice_id) }}">{{ row.invoice_number }}</a>
+          </td>
+          <td>{{ row.customer_name }}</td>
+          <td>{{ row.mode }}</td>
+          <td>{{ row.reference }}</td>
+          <td class="text-end">{{ row.amount|indian_currency }}</td>
+          <td>
+            <a
+              href="{{ url_for('invoices.edit_payment', payment_id=row.payment_id, invoice_id=row.invoice_id, return_to='bank_book', from_date=from_date, to_date=to_date) }}"
+              class="btn btn-sm btn-outline-primary"
+            >
+              Map Bank
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

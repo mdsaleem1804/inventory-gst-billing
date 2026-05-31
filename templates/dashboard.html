@@ -31,6 +31,33 @@
     </div>
 </form>
 
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card border-0 bg-success-subtle h-100">
+            <div class="card-body">
+                <div class="text-muted small">Today Collections</div>
+                <div class="h4 mb-0 text-success">₹{{ today_collections|indian_currency }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-0 bg-danger-subtle h-100">
+            <div class="card-body">
+                <div class="text-muted small">Today Expenses</div>
+                <div class="h4 mb-0 text-danger">₹{{ today_expenses|indian_currency }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-0 bg-light h-100">
+            <div class="card-body">
+                <div class="text-muted small">Net Cash Flow (Today)</div>
+                <div class="h4 mb-0 {% if today_net_cash_flow >= 0 %}text-success{% else %}text-danger{% endif %}">₹{{ today_net_cash_flow|indian_currency }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
 
 
 

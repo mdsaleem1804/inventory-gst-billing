@@ -86,15 +86,25 @@
               <label class="form-label">Payment Mode</label>
               <select name="billing_payment_mode" id="billing_payment_mode" class="form-select" disabled>
                 <option value="">Select Mode</option>
-                <option value="Cash">Cash</option>
-                <option value="UPI">UPI</option>
-                <option value="Card">Card</option>
-                <option value="Bank Transfer">Bank Transfer</option>
+                <option value="cash">Cash</option>
+                <option value="upi">UPI</option>
+                <option value="card">Card</option>
+                <option value="bank_transfer">Bank Transfer</option>
+                <option value="cheque">Cheque</option>
               </select>
             </div>
             <div class="col-md-3">
               <label class="form-label">Amount Received</label>
               <input type="number" name="billing_amount_received" id="billing_amount_received" class="form-control" step="0.01" min="0.01" placeholder="0.00" disabled>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Bank Account</label>
+              <select name="billing_bank_account_id" id="billing_bank_account_id" class="form-select" disabled>
+                <option value="">Select</option>
+                {% for account in bank_accounts %}
+                <option value="{{ account.id }}">{{ account.account_name }}</option>
+                {% endfor %}
+              </select>
             </div>
             <div class="col-md-3">
               <label class="form-label">Reference No</label>
@@ -242,6 +252,7 @@ function toggleBillingPaymentFields() {
   var fields = [
     document.getElementById('billing_payment_mode'),
     document.getElementById('billing_amount_received'),
+    document.getElementById('billing_bank_account_id'),
     document.getElementById('billing_reference_no'),
     document.getElementById('billing_payment_notes')
   ];

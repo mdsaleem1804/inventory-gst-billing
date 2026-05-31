@@ -3,7 +3,7 @@ from flask_login import login_required
 
 dashboard_bp = Blueprint('dashboard', __name__)
 
-from models import db, Invoice, InvoiceItem, Product, Customer
+from models import db, Invoice, InvoiceItem, Product, Customer, Payment, Expense
 from sqlalchemy import func, desc
 from datetime import datetime, timedelta
 
@@ -47,6 +47,19 @@ def dashboard():
     total_gst = db.session.query(func.sum(Invoice.cgst + Invoice.sgst)).filter(func.date(Invoice.date) >= from_date_obj, func.date(Invoice.date) <= to_date_obj).scalar() or 0
     total_invoices = db.session.query(func.count(Invoice.id)).filter(func.date(Invoice.date) >= from_date_obj, func.date(Invoice.date) <= to_date_obj).scalar() or 0
     total_customers = db.session.query(func.count(Customer.id)).scalar() or 0
+    today_collections = (
+        db.session.query(func.coalesce(func.sum(Payment.amount), 0.0))
+        .filter(func.date(Payment.payment_date) == today)
+        .scalar()
+        or 0
+    )
+    today_expenses = (
+        db.session.query(func.coalesce(func.sum(Expense.amount), 0.0))
+        .filter(func.date(Expense.expense_date) == today)
+        .scalar()
+        or 0
+    )
+    today_net_cash_flow = round(float(today_collections) - float(today_expenses), 2)
     # Top 5 products by sales (date range)
     top_products = (
         db.session.query(
@@ -84,6 +97,9 @@ def dashboard():
         total_gst=total_gst,
         total_invoices=total_invoices,
         total_customers=total_customers,
+        today_collections=today_collections,
+        today_expenses=today_expenses,
+        today_net_cash_flow=today_net_cash_flow,
         top_products=top_products,
         top_customers=top_customers
     )

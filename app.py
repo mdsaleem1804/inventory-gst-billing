@@ -84,6 +84,9 @@ def register_blueprints(app):
     print('Registered company_bp')
     app.register_blueprint(users_bp)
     print('Registered users_bp')
+    from finance.routes import finance_bp
+    app.register_blueprint(finance_bp)
+    print('Registered finance_bp')
     from settings.routes import settings_bp
     app.register_blueprint(settings_bp)
     print('Registered settings_bp')

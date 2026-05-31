@@ -6,7 +6,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from flask_login import login_required, current_user
 from .routes import invoices_bp
-from models import db, Invoice, InvoiceItem, Product, ActivityLog, Payment
+from models import db, Invoice, InvoiceItem, Product, ActivityLog, Payment, BankAccount
 from datetime import datetime
 from sqlalchemy import func
 
@@ -17,6 +17,29 @@ def _can_manage_invoices():
 
 def _can_manage_payments():
     return current_user.role in ('admin', 'approver')
+
+
+def _normalize_payment_mode(mode):
+    if mode is None:
+        return None
+    value = str(mode).strip().lower().replace('-', ' ').replace('_', ' ')
+    if not value:
+        return None
+    if value in {'cash'}:
+        return 'cash'
+    if value in {'upi'}:
+        return 'upi'
+    if value in {'card', 'credit card', 'debit card'}:
+        return 'card'
+    if value in {'bank transfer', 'banktransfer', 'neft', 'rtgs', 'imps'}:
+        return 'bank_transfer'
+    if value in {'cheque', 'check'}:
+        return 'cheque'
+    return value.replace(' ', '_')
+
+
+def _is_non_cash_mode(mode):
+    return _normalize_payment_mode(mode) in {'upi', 'card', 'bank_transfer', 'cheque'}
 
 
 def _log_invoice_activity(action, details):
@@ -92,6 +115,7 @@ def _payment_snapshot(payment):
         f", amount={round(float(payment.amount or 0), 2)}"
         f", date={payment_date}"
         f", mode={payment.payment_mode or '-'}"
+        f", bank_account_id={payment.bank_account_id if payment.bank_account_id else '-'}"
         f", ref={payment.reference_no or '-'}"
         f", notes={payment.notes or '-'}"
     )
@@ -215,7 +239,8 @@ def receive_payment(invoice_id):
     if request.method == 'POST':
         amount = request.form.get('amount', type=float)
         payment_date_str = request.form.get('payment_date', '').strip()
-        payment_mode = request.form.get('payment_mode', '').strip()
+        payment_mode = _normalize_payment_mode(request.form.get('payment_mode', '').strip())
+        bank_account_id = request.form.get('bank_account_id', type=int)
         reference_no = request.form.get('reference_no', '').strip()
         notes = request.form.get('notes', '').strip()
 
@@ -239,6 +264,7 @@ def receive_payment(invoice_id):
             amount=round(amount, 2),
             payment_date=payment_date,
             payment_mode=payment_mode or None,
+            bank_account_id=bank_account_id if _is_non_cash_mode(payment_mode) else None,
             reference_no=reference_no or None,
             notes=notes or None,
             received_by=current_user.id,
@@ -254,22 +280,42 @@ def receive_payment(invoice_id):
                 action='Invoice Payment Received',
                 details=(
                     f'Invoice {invoice.invoice_number} received payment={round(amount, 2)} '
-                    f'mode={payment_mode or "-"} ref={reference_no or "-"} status={invoice.payment_status}'
+                    f'mode={payment_mode or "-"} bank_account_id={bank_account_id or "-"} '
+                    f'ref={reference_no or "-"} status={invoice.payment_status}'
                 ),
             )
         )
         db.session.commit()
+        if _is_non_cash_mode(payment_mode) and not payment.bank_account_id:
+            flash('Payment saved without bank account linkage. Please map it later in Bank Book cleanup.', 'warning')
         flash('Payment recorded successfully.', 'success')
         return redirect(url_for('invoices.view_invoice', invoice_id=invoice.id))
 
     payments = Payment.query.filter_by(invoice_id=invoice.id).order_by(Payment.payment_date.desc(), Payment.id.desc()).all()
-    return render_template('invoices/receive_payment.html', invoice=invoice, payments=payments, today=today, can_manage_payments=can_manage_payments)
+    bank_accounts = BankAccount.query.filter_by(is_active=True).order_by(BankAccount.account_name.asc()).all()
+    return render_template('invoices/receive_payment.html', invoice=invoice, payments=payments, today=today, can_manage_payments=can_manage_payments, bank_accounts=bank_accounts)
 
 
 @invoices_bp.route('/payments/<int:payment_id>/edit', methods=['GET', 'POST'])
 @login_required
 def edit_payment(payment_id):
     invoice_id_hint = request.values.get('invoice_id', type=int)
+    return_to = (request.values.get('return_to') or '').strip().lower()
+    from_date = (request.values.get('from_date') or '').strip()
+    to_date = (request.values.get('to_date') or '').strip()
+
+    def _redirect_back_to_context(mapped_payment_id=None):
+        if return_to == 'bank_book':
+            route_args = {}
+            if from_date:
+                route_args['from_date'] = from_date
+            if to_date:
+                route_args['to_date'] = to_date
+            if mapped_payment_id:
+                route_args['recently_mapped_payment_id'] = mapped_payment_id
+            return redirect(url_for('finance.bank_book', **route_args))
+        return redirect(url_for('invoices.receive_payment', invoice_id=invoice.id))
+
     payment = Payment.query.get(payment_id)
     if payment is None:
         _log_invoice_activity(
@@ -277,6 +323,13 @@ def edit_payment(payment_id):
             f'Payment id={payment_id} not found during edit. Possibly already reversed/changed.',
         )
         flash('Payment is no longer available. It may have been reversed by another user.', 'warning')
+        if return_to == 'bank_book':
+            route_args = {}
+            if from_date:
+                route_args['from_date'] = from_date
+            if to_date:
+                route_args['to_date'] = to_date
+            return redirect(url_for('finance.bank_book', **route_args))
         if invoice_id_hint:
             return redirect(url_for('invoices.receive_payment', invoice_id=invoice_id_hint))
         return redirect(url_for('invoices.crud_invoices'))
@@ -288,24 +341,25 @@ def edit_payment(payment_id):
             f'Role {current_user.role} attempted payment edit: invoice={invoice.invoice_number}, {_payment_snapshot(payment)}',
         )
         flash('Only admin or approver can edit payments.', 'danger')
-        return redirect(url_for('invoices.receive_payment', invoice_id=invoice.id))
+        return _redirect_back_to_context()
 
     if request.method == 'POST':
         amount = request.form.get('amount', type=float)
         payment_date_str = request.form.get('payment_date', '').strip()
-        payment_mode = request.form.get('payment_mode', '').strip()
+        payment_mode = _normalize_payment_mode(request.form.get('payment_mode', '').strip())
+        bank_account_id = request.form.get('bank_account_id', type=int)
         reference_no = request.form.get('reference_no', '').strip()
         notes = request.form.get('notes', '').strip()
 
         if not amount or amount <= 0:
             flash('Enter a valid payment amount.', 'danger')
-            return redirect(url_for('invoices.edit_payment', payment_id=payment.id))
+            return redirect(request.url)
 
         paid_excluding_current = round(float(invoice.paid_amount or 0) - float(payment.amount or 0), 2)
         max_allowed = round(float(invoice.total or 0) - paid_excluding_current, 2)
         if amount > max_allowed:
             flash('Payment amount is too high for this invoice.', 'danger')
-            return redirect(url_for('invoices.edit_payment', payment_id=payment.id))
+            return redirect(request.url)
 
         payment_date = payment.payment_date or datetime.now()
         if payment_date_str:
@@ -313,7 +367,7 @@ def edit_payment(payment_id):
                 payment_date = datetime.strptime(payment_date_str, '%Y-%m-%d')
             except ValueError:
                 flash('Payment date format is invalid.', 'danger')
-                return redirect(url_for('invoices.edit_payment', payment_id=payment.id))
+                return redirect(request.url)
 
         before_payment = _payment_snapshot(payment)
         before_invoice = _invoice_financial_snapshot(invoice)
@@ -321,6 +375,7 @@ def edit_payment(payment_id):
         payment.amount = round(amount, 2)
         payment.payment_date = payment_date
         payment.payment_mode = payment_mode or None
+        payment.bank_account_id = bank_account_id if _is_non_cash_mode(payment_mode) else None
         payment.reference_no = reference_no or None
         payment.notes = notes or None
 
@@ -341,10 +396,24 @@ def edit_payment(payment_id):
             )
         )
         db.session.commit()
-        flash('Payment updated successfully.', 'success')
-        return redirect(url_for('invoices.receive_payment', invoice_id=invoice.id))
+        if _is_non_cash_mode(payment_mode) and not payment.bank_account_id:
+            flash('Payment saved without bank account linkage. Please map it later in Bank Book cleanup.', 'warning')
+            flash('Payment updated successfully.', 'success')
+            return _redirect_back_to_context()
 
-    return render_template('invoices/edit_payment.html', invoice=invoice, payment=payment)
+        flash('Payment mapped to bank account. Cleanup entry completed.', 'success')
+        return _redirect_back_to_context(mapped_payment_id=payment.id)
+
+    bank_accounts = BankAccount.query.filter_by(is_active=True).order_by(BankAccount.account_name.asc()).all()
+    return render_template(
+        'invoices/edit_payment.html',
+        invoice=invoice,
+        payment=payment,
+        bank_accounts=bank_accounts,
+        return_to=return_to,
+        from_date=from_date,
+        to_date=to_date,
+    )
 
 
 @invoices_bp.route('/payments/<int:payment_id>/reverse', methods=['POST'])
@@ -424,6 +493,7 @@ def crud_invoices():
     form_invoice = None
     can_manage_invoices = _can_manage_invoices()
     products = Product.query.all()
+    bank_accounts = BankAccount.query.filter_by(is_active=True).order_by(BankAccount.account_name.asc()).all()
     from models import Customer
     customers = Customer.query.order_by(Customer.name).all()
     if request.method == 'POST':
@@ -494,7 +564,8 @@ def crud_invoices():
         sgst = round(sgst, 2)
 
         payment_type = (request.form.get('billing_payment_type') or 'credit').strip().lower()
-        payment_mode = (request.form.get('billing_payment_mode') or '').strip()
+        payment_mode = _normalize_payment_mode((request.form.get('billing_payment_mode') or '').strip())
+        payment_bank_account_id = request.form.get('billing_bank_account_id', type=int)
         reference_no = (request.form.get('billing_reference_no') or '').strip()
         payment_notes = (request.form.get('billing_payment_notes') or '').strip()
         amount_received_raw = (request.form.get('billing_amount_received') or '').strip()
@@ -582,6 +653,7 @@ def crud_invoices():
                     amount=applied_amount,
                     payment_date=datetime.now(),
                     payment_mode=payment_mode,
+                    bank_account_id=payment_bank_account_id if _is_non_cash_mode(payment_mode) else None,
                     reference_no=reference_no or None,
                     notes=bill_time_notes,
                     received_by=current_user.id,
@@ -602,6 +674,7 @@ def crud_invoices():
                         f'applied={round(applied_amount, 2)}; '
                         f'change_returned={round(change_returned, 2)}; '
                         f'payment_mode={payment_mode or "-"}; '
+                        f'payment_bank_account_id={payment_bank_account_id or "-"}; '
                         f'reference={reference_no or "-"}; '
                         f'status={invoice.payment_status}'
                     ),
@@ -609,6 +682,8 @@ def crud_invoices():
             )
             db.session.commit()
             if payment_type == 'pay_now':
+                if _is_non_cash_mode(payment_mode) and not payment_bank_account_id:
+                    flash('Non-cash bill-time payment saved without bank account linkage. Map it later in Bank Book cleanup.', 'warning')
                 flash(
                     (
                         f'Invoice added. Received: {amount_received:.2f}, '
@@ -647,4 +722,4 @@ def crud_invoices():
     if edit_id:
         form_invoice = Invoice.query.get(edit_id)
     invoices = query.order_by(Invoice.created_at.desc() if hasattr(Invoice, 'created_at') else Invoice.date.desc()).all()
-    return render_template('invoices/crud.html', invoices=invoices, form_invoice=form_invoice, products=products, customers=customers, from_date=from_date, to_date=to_date, search=search, can_manage_invoices=can_manage_invoices)
+    return render_template('invoices/crud.html', invoices=invoices, form_invoice=form_invoice, products=products, customers=customers, bank_accounts=bank_accounts, from_date=from_date, to_date=to_date, search=search, can_manage_invoices=can_manage_invoices)

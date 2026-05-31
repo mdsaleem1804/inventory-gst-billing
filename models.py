@@ -1,7 +1,7 @@
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from datetime import datetime
-from sqlalchemy import inspect, text
+from sqlalchemy import inspect, text, func
 
 db = SQLAlchemy()
 
@@ -95,10 +95,45 @@ class Payment(db.Model, AuditMixin):
     amount = db.Column(db.Float, nullable=False)
     payment_date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     payment_mode = db.Column(db.String(32), nullable=True)
+    bank_account_id = db.Column(db.Integer, db.ForeignKey('bank_accounts.id'), nullable=True)
     reference_no = db.Column(db.String(64), nullable=True)
     notes = db.Column(db.String(256), nullable=True)
     received_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     received_by_user = db.relationship('User')
+    bank_account = db.relationship('BankAccount')
+
+
+class BankAccount(db.Model, AuditMixin):
+    __tablename__ = 'bank_accounts'
+    id = db.Column(db.Integer, primary_key=True)
+    account_name = db.Column(db.String(128), unique=True, nullable=False)
+    account_type = db.Column(db.String(32), nullable=False, default='current')
+    opening_balance = db.Column(db.Float, nullable=False, default=0)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+
+
+class ExpenseCategory(db.Model, AuditMixin):
+    __tablename__ = 'expense_categories'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(128), unique=True, nullable=False)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+
+
+class Expense(db.Model, AuditMixin):
+    __tablename__ = 'expenses'
+    id = db.Column(db.Integer, primary_key=True)
+    expense_date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    category_id = db.Column(db.Integer, db.ForeignKey('expense_categories.id'), nullable=False)
+    amount = db.Column(db.Float, nullable=False)
+    payment_mode = db.Column(db.String(32), nullable=False, default='cash')
+    bank_account_id = db.Column(db.Integer, db.ForeignKey('bank_accounts.id'), nullable=True)
+    reference_no = db.Column(db.String(64), nullable=True)
+    description = db.Column(db.String(256), nullable=True)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+
+    category = db.relationship('ExpenseCategory')
+    bank_account = db.relationship('BankAccount')
+    created_by_user = db.relationship('User')
 
 class Customer(db.Model, AuditMixin):
     __tablename__ = 'customers'
@@ -120,6 +155,25 @@ class Company(db.Model):
     logo = db.Column(db.String(256), nullable=True)  # Path to logo image
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+def _normalize_payment_mode_value(mode):
+    if mode is None:
+        return None
+    value = str(mode).strip().lower().replace('-', ' ').replace('_', ' ')
+    if not value:
+        return None
+    if value in {'cash'}:
+        return 'cash'
+    if value in {'upi'}:
+        return 'upi'
+    if value in {'card', 'credit card', 'debit card'}:
+        return 'card'
+    if value in {'bank transfer', 'banktransfer', 'neft', 'rtgs', 'imps'}:
+        return 'bank_transfer'
+    if value in {'cheque', 'check'}:
+        return 'cheque'
+    return value.replace(' ', '_')
 
 
 def ensure_billing_schema():
@@ -167,4 +221,53 @@ def ensure_billing_schema():
                 )
             )
 
+    BankAccount.__table__.create(bind=db.engine, checkfirst=True)
+    ExpenseCategory.__table__.create(bind=db.engine, checkfirst=True)
+    Expense.__table__.create(bind=db.engine, checkfirst=True)
+    if 'invoices' in table_names:
         Payment.__table__.create(bind=db.engine, checkfirst=True)
+
+    inspector = inspect(db.engine)
+    table_names = inspector.get_table_names()
+    if 'payments' in table_names:
+        payment_columns = {col['name'] for col in inspector.get_columns('payments')}
+        alter_statements = []
+        if 'bank_account_id' not in payment_columns:
+            alter_statements.append('ALTER TABLE payments ADD COLUMN bank_account_id INTEGER')
+        if alter_statements:
+            with db.engine.begin() as connection:
+                for stmt in alter_statements:
+                    connection.execute(text(stmt))
+
+    # Seed default expense categories once for usability.
+    default_categories = ['Rent', 'Salary', 'Utilities', 'Transport', 'Maintenance', 'Miscellaneous']
+    for name in default_categories:
+        existing = ExpenseCategory.query.filter(func.lower(ExpenseCategory.name) == name.lower()).first()
+        if not existing:
+            db.session.add(ExpenseCategory(name=name))
+
+    # Normalize historical payment mode values to keep reporting consistent.
+    changed = False
+    if 'payments' in table_names:
+        for pay in Payment.query.all():
+            normalized = _normalize_payment_mode_value(pay.payment_mode)
+            if normalized != pay.payment_mode:
+                pay.payment_mode = normalized
+                changed = True
+
+    if 'invoices' in table_names:
+        for inv in Invoice.query.all():
+            normalized = _normalize_payment_mode_value(inv.payment_mode)
+            if normalized != inv.payment_mode:
+                inv.payment_mode = normalized
+                changed = True
+
+    if 'expenses' in table_names:
+        for exp in Expense.query.all():
+            normalized = _normalize_payment_mode_value(exp.payment_mode)
+            if normalized != exp.payment_mode:
+                exp.payment_mode = normalized or 'cash'
+                changed = True
+
+    if changed or db.session.new:
+        db.session.commit()

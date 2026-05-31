@@ -1,0 +1,142 @@
+{% extends 'base.html' %}
+{% block title %}Expenses{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="mb-0">Expenses</h2>
+  <div>
+    <span class="badge bg-secondary me-2">Filtered Total: {{ total_expense|indian_currency }}</span>
+    <a href="{{ url_for('finance.expenses', from_date=from_date, to_date=to_date, search=search, export='csv') }}" class="btn btn-outline-primary btn-sm me-1">Export CSV</a>
+    <a href="{{ url_for('finance.expenses', from_date=from_date, to_date=to_date, search=search, export='excel') }}" class="btn btn-outline-success btn-sm">Export Excel</a>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-body">
+    <form method="get" class="row g-3 align-items-end">
+      <div class="col-md-3">
+        <label class="form-label">From</label>
+        <input type="date" class="form-control" name="from_date" value="{{ from_date }}">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">To</label>
+        <input type="date" class="form-control" name="to_date" value="{{ to_date }}">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Search</label>
+        <input type="text" class="form-control" name="search" value="{{ search }}" placeholder="Category, reference, notes...">
+      </div>
+      <div class="col-md-2">
+        <button type="submit" class="btn btn-primary">Filter</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if can_edit %}
+<div class="card mb-4">
+  <div class="card-header">Add Expense</div>
+  <div class="card-body">
+    <form method="post">
+      <div class="row g-3 align-items-end">
+        <div class="col-md-2">
+          <label class="form-label">Date</label>
+          <input type="date" class="form-control" name="expense_date" value="{{ today }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Category</label>
+          <select class="form-select" name="category_id">
+            <option value="">Select</option>
+            {% for category in categories %}
+            <option value="{{ category.id }}">{{ category.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Or New Category</label>
+          <input type="text" class="form-control" name="new_category" placeholder="Create new category">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Amount</label>
+          <input type="number" class="form-control" name="amount" min="0.01" step="0.01" required>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Payment Mode</label>
+          <select class="form-select" name="payment_mode">
+            <option value="cash">Cash</option>
+            <option value="upi">UPI</option>
+            <option value="card">Card</option>
+            <option value="bank_transfer">Bank Transfer</option>
+            <option value="cheque">Cheque</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Bank Account (optional)</label>
+          <select class="form-select" name="bank_account_id">
+            <option value="">Select</option>
+            {% for account in bank_accounts %}
+            <option value="{{ account.id }}">{{ account.account_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Reference No</label>
+          <input type="text" class="form-control" name="reference_no" maxlength="64">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Description</label>
+          <input type="text" class="form-control" name="description" maxlength="256">
+        </div>
+        <div class="col-md-2">
+          <button type="submit" class="btn btn-success">Save Expense</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-header">Expense History</div>
+  <div class="table-responsive">
+    <table class="table table-bordered table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Date</th>
+          <th>Category</th>
+          <th>Amount</th>
+          <th>Mode</th>
+          <th>Bank Account</th>
+          <th>Reference</th>
+          <th>Description</th>
+          {% if can_edit %}
+          <th>Action</th>
+          {% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for expense in expenses %}
+        <tr>
+          <td>{{ expense.expense_date.strftime('%Y-%m-%d') if expense.expense_date else '-' }}</td>
+          <td>{{ expense.category.name if expense.category else '-' }}</td>
+          <td class="text-end">{{ expense.amount|indian_currency }}</td>
+          <td>{{ expense.payment_mode or '-' }}</td>
+          <td>{{ expense.bank_account.account_name if expense.bank_account else '-' }}</td>
+          <td>{{ expense.reference_no or '-' }}</td>
+          <td>{{ expense.description or '-' }}</td>
+          {% if can_edit %}
+          <td>
+            <form method="post" style="display:inline;" action="{{ url_for('finance.expenses') }}">
+              <input type="hidden" name="delete_id" value="{{ expense.id }}">
+              <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete this expense?');">Delete</button>
+            </form>
+          </td>
+          {% endif %}
+        </tr>
+        {% else %}
+        <tr><td colspan="{{ 8 if can_edit else 7 }}" class="text-center">No expenses found.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
