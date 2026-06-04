@@ -2,6 +2,7 @@
 import pandas as pd
 from flask import send_file, render_template, redirect, url_for, flash, request
 import io
+import re
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from flask_login import login_required, current_user
@@ -44,6 +45,57 @@ def _normalize_payment_mode(mode):
 
 def _is_non_cash_mode(mode):
     return _normalize_payment_mode(mode) in {'upi', 'card', 'bank_transfer', 'cheque'}
+
+
+def _payment_note_parts(notes):
+    raw_notes = (notes or '').strip()
+    cash_received = None
+    change_returned = 0.0
+
+    cash_match = re.search(r'(?:cash_received|bill_time_received)=([0-9]+(?:\.[0-9]+)?)', raw_notes)
+    change_match = re.search(r'change_returned=([0-9]+(?:\.[0-9]+)?)', raw_notes)
+    if cash_match:
+        cash_received = round(float(cash_match.group(1)), 2)
+    if change_match:
+        change_returned = round(float(change_match.group(1)), 2)
+
+    segments = [segment.strip() for segment in raw_notes.split('|') if segment.strip()]
+    filtered_segments = [
+        segment for segment in segments
+        if 'cash_received=' not in segment and 'bill_time_received=' not in segment and 'change_returned=' not in segment
+    ]
+    base_notes = ' | '.join(filtered_segments)
+
+    return {
+        'base_notes': base_notes,
+        'cash_received': cash_received,
+        'change_returned': change_returned,
+    }
+
+
+def _build_payment_notes(notes, cash_received=None, change_returned=0.0):
+    parts = _payment_note_parts(notes)
+    base_notes = parts['base_notes']
+    if cash_received is None:
+        return base_notes or None
+
+    cash_meta = f'cash_received={round(float(cash_received or 0), 2):.2f}; change_returned={round(float(change_returned or 0), 2):.2f}'
+    if base_notes:
+        return f'{base_notes} | {cash_meta}'
+    return cash_meta
+
+
+def _resolve_payment_amounts(raw_amount, limit_amount, payment_mode):
+    received_amount = round(float(raw_amount or 0), 2)
+    applicable_limit = round(max(float(limit_amount or 0), 0.0), 2)
+    is_cash = _normalize_payment_mode(payment_mode) == 'cash'
+    if is_cash:
+        applied_amount = round(min(received_amount, applicable_limit), 2)
+        change_returned = round(max(received_amount - applied_amount, 0.0), 2)
+    else:
+        applied_amount = received_amount
+        change_returned = 0.0
+    return received_amount, applied_amount, change_returned
 
 
 def _log_invoice_activity(action, details):
@@ -112,14 +164,18 @@ def _invoice_financial_snapshot(invoice):
 
 def _payment_snapshot(payment):
     payment_date = payment.payment_date.strftime('%Y-%m-%d') if payment.payment_date else '-'
+    note_parts = _payment_note_parts(payment.notes)
+    cash_received = note_parts['cash_received'] if note_parts['cash_received'] is not None else round(float(payment.amount or 0), 2)
     return (
         f"id={payment.id}"
         f", amount={round(float(payment.amount or 0), 2)}"
+        f", cash_received={cash_received}"
+        f", change_returned={round(float(note_parts['change_returned'] or 0), 2)}"
         f", date={payment_date}"
         f", mode={payment.payment_mode or '-'}"
         f", bank_account_id={payment.bank_account_id if payment.bank_account_id else '-'}"
         f", ref={payment.reference_no or '-'}"
-        f", notes={payment.notes or '-'}"
+        f", notes={note_parts['base_notes'] or '-'}"
     )
 
 
@@ -268,9 +324,15 @@ def receive_payment(invoice_id):
         if not amount or amount <= 0:
             flash('Enter a valid payment amount.', 'danger')
             return redirect(url_for('invoices.receive_payment', invoice_id=invoice.id))
-        if amount > (invoice.balance_amount or 0):
+        if not payment_mode:
+            flash('Select a payment mode.', 'danger')
+            return redirect(url_for('invoices.receive_payment', invoice_id=invoice.id))
+        pending_balance = round(float(invoice.balance_amount or 0), 2)
+        if _is_non_cash_mode(payment_mode) and amount > pending_balance:
             flash('Payment amount cannot be greater than pending balance.', 'danger')
             return redirect(url_for('invoices.receive_payment', invoice_id=invoice.id))
+
+        received_amount, applied_amount, change_returned = _resolve_payment_amounts(amount, pending_balance, payment_mode)
 
         payment_date = datetime.now()
         if payment_date_str:
@@ -282,12 +344,12 @@ def receive_payment(invoice_id):
 
         payment = Payment(
             invoice_id=invoice.id,
-            amount=round(amount, 2),
+            amount=applied_amount,
             payment_date=payment_date,
             payment_mode=payment_mode or None,
             bank_account_id=bank_account_id if _is_non_cash_mode(payment_mode) else None,
             reference_no=reference_no or None,
-            notes=notes or None,
+            notes=_build_payment_notes(notes, cash_received=received_amount if payment_mode == 'cash' else None, change_returned=change_returned),
             received_by=current_user.id,
         )
         db.session.add(payment)
@@ -300,7 +362,8 @@ def receive_payment(invoice_id):
                 username=current_user.username,
                 action='Invoice Payment Received',
                 details=(
-                    f'Invoice {invoice.invoice_number} received payment={round(amount, 2)} '
+                    f'Invoice {invoice.invoice_number} received payment={applied_amount} '
+                    f'cash_received={received_amount} change_returned={change_returned} '
                     f'mode={payment_mode or "-"} bank_account_id={bank_account_id or "-"} '
                     f'ref={reference_no or "-"} status={invoice.payment_status}'
                 ),
@@ -309,7 +372,13 @@ def receive_payment(invoice_id):
         db.session.commit()
         if _is_non_cash_mode(payment_mode) and not payment.bank_account_id:
             flash('Payment saved without bank account linkage. Please map it later in Bank Book cleanup.', 'warning')
-        flash('Payment recorded successfully.', 'success')
+        if payment_mode == 'cash':
+            flash(
+                f'Payment recorded. Received: {received_amount:.2f}, Applied: {applied_amount:.2f}, Change Returned: {change_returned:.2f}.',
+                'success',
+            )
+        else:
+            flash('Payment recorded successfully.', 'success')
         return redirect(url_for('invoices.view_invoice', invoice_id=invoice.id))
 
     payments = Payment.query.filter_by(invoice_id=invoice.id).order_by(Payment.payment_date.desc(), Payment.id.desc()).all()
@@ -375,12 +444,17 @@ def edit_payment(payment_id):
         if not amount or amount <= 0:
             flash('Enter a valid payment amount.', 'danger')
             return redirect(request.url)
+        if not payment_mode:
+            flash('Select a payment mode.', 'danger')
+            return redirect(request.url)
 
         paid_excluding_current = round(float(invoice.paid_amount or 0) - float(payment.amount or 0), 2)
         max_allowed = round(float(invoice.total or 0) - paid_excluding_current, 2)
-        if amount > max_allowed:
+        if _is_non_cash_mode(payment_mode) and amount > max_allowed:
             flash('Payment amount is too high for this invoice.', 'danger')
             return redirect(request.url)
+
+        received_amount, applied_amount, change_returned = _resolve_payment_amounts(amount, max_allowed, payment_mode)
 
         payment_date = payment.payment_date or datetime.now()
         if payment_date_str:
@@ -393,12 +467,12 @@ def edit_payment(payment_id):
         before_payment = _payment_snapshot(payment)
         before_invoice = _invoice_financial_snapshot(invoice)
 
-        payment.amount = round(amount, 2)
+        payment.amount = applied_amount
         payment.payment_date = payment_date
         payment.payment_mode = payment_mode or None
         payment.bank_account_id = bank_account_id if _is_non_cash_mode(payment_mode) else None
         payment.reference_no = reference_no or None
-        payment.notes = notes or None
+        payment.notes = _build_payment_notes(notes, cash_received=received_amount if payment_mode == 'cash' else None, change_returned=change_returned)
 
         _sync_invoice_payment_from_transactions(invoice)
         after_payment = _payment_snapshot(payment)
@@ -422,14 +496,27 @@ def edit_payment(payment_id):
             flash('Payment updated successfully.', 'success')
             return _redirect_back_to_context()
 
+        if payment_mode == 'cash':
+            flash(
+                f'Payment updated. Received: {received_amount:.2f}, Applied: {applied_amount:.2f}, Change Returned: {change_returned:.2f}.',
+                'success',
+            )
+            return _redirect_back_to_context(mapped_payment_id=payment.id)
+
         flash('Payment mapped to bank account. Cleanup entry completed.', 'success')
         return _redirect_back_to_context(mapped_payment_id=payment.id)
 
     bank_accounts = BankAccount.query.filter_by(is_active=True).order_by(BankAccount.account_name.asc()).all()
+    payment_note_parts = _payment_note_parts(payment.notes)
+    payment_form_amount = payment_note_parts['cash_received'] if payment_note_parts['cash_received'] is not None else round(float(payment.amount or 0), 2)
     return render_template(
         'invoices/edit_payment.html',
         invoice=invoice,
         payment=payment,
+        payment_form_amount=payment_form_amount,
+        payment_form_notes=payment_note_parts['base_notes'],
+        payment_change_returned=payment_note_parts['change_returned'],
+        max_allowed=round(max(float(invoice.total or 0) - (float(invoice.paid_amount or 0) - float(payment.amount or 0)), 0.0), 2),
         bank_accounts=bank_accounts,
         return_to=return_to,
         from_date=from_date,

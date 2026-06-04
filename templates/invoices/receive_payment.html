@@ -24,7 +24,7 @@
       <div class="row g-3 align-items-end">
         <div class="col-md-2">
           <label class="form-label">Amount</label>
-          <input type="number" name="amount" class="form-control" step="0.01" min="0.01" max="{{ invoice.balance_amount if invoice.balance_amount is not none else invoice.total }}" required>
+          <input type="number" name="amount" id="payment_amount" class="form-control" step="0.01" min="0.01" required>
         </div>
         <div class="col-md-2">
           <label class="form-label">Payment Date</label>
@@ -32,7 +32,7 @@
         </div>
         <div class="col-md-2">
           <label class="form-label">Mode</label>
-          <select name="payment_mode" class="form-select">
+          <select name="payment_mode" id="payment_mode" class="form-select" required>
             <option value="">Select</option>
             <option value="cash">Cash</option>
             <option value="upi">UPI</option>
@@ -57,6 +57,29 @@
         <div class="col-md-3">
           <label class="form-label">Notes</label>
           <input type="text" name="notes" class="form-control" maxlength="256">
+        </div>
+      </div>
+      <div class="form-text mt-2">
+        Cash can be received above the pending balance; the extra will be treated as change returned. Non-cash payments must match the pending amount or less.
+      </div>
+      <div class="row g-3 mt-1">
+        <div class="col-md-4">
+          <div class="border rounded p-2 bg-light">
+            <div class="small text-muted">Pending Balance</div>
+            <div class="fw-semibold" id="pending_balance_display">{{ (invoice.balance_amount if invoice.balance_amount is not none else invoice.total)|indian_currency }}</div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="border rounded p-2 bg-light">
+            <div class="small text-muted">Applied Amount</div>
+            <div class="fw-semibold text-success" id="applied_amount_display">0.00</div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="border rounded p-2 bg-light">
+            <div class="small text-muted">Change Returned</div>
+            <div class="fw-semibold text-primary" id="change_returned_display">0.00</div>
+          </div>
         </div>
       </div>
       <div class="mt-3">
@@ -107,4 +130,36 @@
     </table>
   </div>
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  var amountInput = document.getElementById('payment_amount');
+  var modeSelect = document.getElementById('payment_mode');
+  var pendingBalance = {{ '%.2f'|format(invoice.balance_amount if invoice.balance_amount is not none else invoice.total) }};
+  var appliedDisplay = document.getElementById('applied_amount_display');
+  var changeDisplay = document.getElementById('change_returned_display');
+
+  function updatePaymentPreview() {
+    var amount = parseFloat(amountInput.value || '0');
+    var mode = (modeSelect.value || '').toLowerCase();
+    if (!isFinite(amount) || amount < 0) {
+      amount = 0;
+    }
+
+    var applied = mode === 'cash' ? Math.min(amount, pendingBalance) : amount;
+    if (mode !== 'cash' && amount > pendingBalance) {
+      applied = pendingBalance;
+    }
+    var changeReturned = mode === 'cash' ? Math.max(amount - applied, 0) : 0;
+
+    appliedDisplay.textContent = applied.toFixed(2);
+    changeDisplay.textContent = changeReturned.toFixed(2);
+  }
+
+  amountInput.addEventListener('input', updatePaymentPreview);
+  modeSelect.addEventListener('change', updatePaymentPreview);
+  updatePaymentPreview();
+})();
+</script>
 {% endblock %}

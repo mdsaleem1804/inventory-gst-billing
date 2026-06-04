@@ -32,7 +32,7 @@
       <div class="row g-3 align-items-end">
         <div class="col-md-2">
           <label class="form-label">Amount</label>
-          <input type="number" name="amount" class="form-control" step="0.01" min="0.01" value="{{ '%.2f'|format(payment.amount) }}" required>
+          <input type="number" name="amount" id="payment_amount" class="form-control" step="0.01" min="0.01" value="{{ '%.2f'|format(payment_form_amount) }}" required>
         </div>
         <div class="col-md-2">
           <label class="form-label">Payment Date</label>
@@ -40,7 +40,7 @@
         </div>
         <div class="col-md-2">
           <label class="form-label">Mode</label>
-          <select name="payment_mode" class="form-select">
+          <select name="payment_mode" id="payment_mode" class="form-select" required>
             <option value="" {% if not payment.payment_mode %}selected{% endif %}>Select</option>
             <option value="cash" {% if payment.payment_mode == 'cash' %}selected{% endif %}>Cash</option>
             <option value="upi" {% if payment.payment_mode == 'upi' %}selected{% endif %}>UPI</option>
@@ -64,7 +64,30 @@
         </div>
         <div class="col-md-3">
           <label class="form-label">Notes</label>
-          <input type="text" name="notes" class="form-control" maxlength="256" value="{{ payment.notes or '' }}">
+          <input type="text" name="notes" class="form-control" maxlength="256" value="{{ payment_form_notes or '' }}">
+        </div>
+      </div>
+      <div class="form-text mt-2">
+        Cash can be received above the applicable balance; the extra will be treated as change returned. Non-cash payments must stay within the applicable balance.
+      </div>
+      <div class="row g-3 mt-1">
+        <div class="col-md-4">
+          <div class="border rounded p-2 bg-light">
+            <div class="small text-muted">Applicable Balance</div>
+            <div class="fw-semibold" id="max_allowed_display">{{ max_allowed|indian_currency }}</div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="border rounded p-2 bg-light">
+            <div class="small text-muted">Applied Amount</div>
+            <div class="fw-semibold text-success" id="applied_amount_display">{{ payment.amount|indian_currency }}</div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="border rounded p-2 bg-light">
+            <div class="small text-muted">Change Returned</div>
+            <div class="fw-semibold text-primary" id="change_returned_display">{{ payment_change_returned|indian_currency }}</div>
+          </div>
         </div>
       </div>
       <div class="mt-3">
@@ -73,4 +96,36 @@
     </form>
   </div>
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  var amountInput = document.getElementById('payment_amount');
+  var modeSelect = document.getElementById('payment_mode');
+  var maxAllowed = {{ '%.2f'|format(max_allowed) }};
+  var appliedDisplay = document.getElementById('applied_amount_display');
+  var changeDisplay = document.getElementById('change_returned_display');
+
+  function updatePaymentPreview() {
+    var amount = parseFloat(amountInput.value || '0');
+    var mode = (modeSelect.value || '').toLowerCase();
+    if (!isFinite(amount) || amount < 0) {
+      amount = 0;
+    }
+
+    var applied = mode === 'cash' ? Math.min(amount, maxAllowed) : amount;
+    if (mode !== 'cash' && amount > maxAllowed) {
+      applied = maxAllowed;
+    }
+    var changeReturned = mode === 'cash' ? Math.max(amount - applied, 0) : 0;
+
+    appliedDisplay.textContent = applied.toFixed(2);
+    changeDisplay.textContent = changeReturned.toFixed(2);
+  }
+
+  amountInput.addEventListener('input', updatePaymentPreview);
+  modeSelect.addEventListener('change', updatePaymentPreview);
+  updatePaymentPreview();
+})();
+</script>
 {% endblock %}
