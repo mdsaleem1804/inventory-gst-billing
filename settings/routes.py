@@ -3,7 +3,8 @@ from flask_login import login_required, current_user
 import os
 import shutil
 from datetime import datetime
-from models import db, Company
+from sqlalchemy import func
+from models import db, Company, ActivityLog, Customer, ReminderTemplate
 
 settings_bp = Blueprint('settings', __name__, url_prefix='/settings')
 
@@ -99,3 +100,81 @@ def developer_settings():
         return redirect(url_for('settings.developer_settings'))
 
     return render_template('settings/developer.html', company=company)
+
+
+@settings_bp.route('/communication-logs')
+@login_required
+def communication_logs():
+    if not _require_admin():
+        return redirect(url_for('dashboard.dashboard'))
+
+    customer_id = request.args.get('customer_id', type=int)
+    from_date = request.args.get('from_date', '').strip()
+    to_date = request.args.get('to_date', '').strip()
+    action = request.args.get('action', '').strip()
+    page = request.args.get('page', 1, type=int)
+
+    query = ActivityLog.query.filter(
+        ActivityLog.action.in_(['Customer Reminder Sent', 'Invoice WhatsApp Share Opened'])
+    )
+    if customer_id:
+        query = query.filter(ActivityLog.details.ilike(f'%customer_id={customer_id}%'))
+    if action:
+        query = query.filter(ActivityLog.action.ilike(f'%{action}%'))
+    if from_date:
+        query = query.filter(func.date(ActivityLog.timestamp) >= from_date)
+    if to_date:
+        query = query.filter(func.date(ActivityLog.timestamp) <= to_date)
+
+    pagination = query.order_by(ActivityLog.timestamp.desc(), ActivityLog.id.desc()).paginate(
+        page=page,
+        per_page=50,
+        error_out=False,
+    )
+
+    customers = Customer.query.order_by(Customer.name.asc()).all()
+    return render_template(
+        'settings/communication_logs.html',
+        logs=pagination.items,
+        pagination=pagination,
+        customers=customers,
+        customer_id=customer_id,
+        from_date=from_date,
+        to_date=to_date,
+        action=action,
+    )
+
+
+@settings_bp.route('/reminder-templates', methods=['GET', 'POST'])
+@login_required
+def reminder_templates():
+    if not _require_admin():
+        return redirect(url_for('dashboard.dashboard'))
+
+    if request.method == 'POST':
+        templates = ReminderTemplate.query.order_by(ReminderTemplate.template_key.asc()).all()
+        for template in templates:
+            title = (request.form.get(f'title_{template.template_key}') or '').strip()
+            message = (request.form.get(f'message_{template.template_key}') or '').strip()
+            is_active = request.form.get(f'is_active_{template.template_key}') == 'on'
+            if not title or not message:
+                flash(f'Title and message are required for {template.template_key}.', 'danger')
+                return redirect(url_for('settings.reminder_templates'))
+            template.title = title
+            template.message = message
+            template.is_active = is_active
+
+        db.session.add(
+            ActivityLog(
+                user_id=current_user.id,
+                username=current_user.username,
+                action='Reminder Templates Updated',
+                details='Reminder templates updated from application settings.',
+            )
+        )
+        db.session.commit()
+        flash('Reminder templates updated successfully.', 'success')
+        return redirect(url_for('settings.reminder_templates'))
+
+    templates = ReminderTemplate.query.order_by(ReminderTemplate.template_key.asc()).all()
+    return render_template('settings/reminder_templates.html', templates=templates)

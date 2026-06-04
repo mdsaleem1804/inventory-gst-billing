@@ -6,8 +6,15 @@
 </style>
 <div class="d-print-none mb-3">
   <a href="{{ url_for('invoices.crud_invoices') }}" class="btn btn-secondary">Back to Invoices</a>
+  {% if customer %}
+  <a href="{{ url_for('customers.customer_ledger', customer_id=customer.id) }}" class="btn btn-outline-secondary">Customer Ledger</a>
+  {% endif %}
   {% if can_receive_payment %}
   <a href="{{ url_for('invoices.receive_payment', invoice_id=invoice.id) }}" class="btn btn-success">Receive Payment</a>
+  {% endif %}
+  <a href="{{ url_for('invoices.share_invoice_whatsapp', invoice_id=invoice.id) }}" class="btn btn-success">Share via WhatsApp</a>
+  {% if (invoice.balance_amount if invoice.balance_amount is not none else invoice.total) > 0 %}
+  <a href="{{ url_for('invoices.send_invoice_reminder', invoice_id=invoice.id) }}" class="btn btn-warning">Send Reminder</a>
   {% endif %}
   <button onclick="trackInvoicePrint('{{ url_for('invoices.track_invoice_print', invoice_id=invoice.id) }}')" class="btn btn-primary">Print</button>
   <a href="{{ url_for('invoices.download_invoice_pdf', invoice_id=invoice.id) }}" class="btn btn-outline-danger">Download PDF</a>
@@ -51,7 +58,7 @@
   <div class="d-flex mb-2" style="border-bottom:1px solid #333;">
     <div style="flex:2"><strong>To:</strong> {{ invoice.customer_name }}</div>
     <div style="flex:2"><strong>Address:</strong> {{ invoice.customer_address }}</div>
-    <div style="flex:1"><strong>Ph:</strong> </div>
+    <div style="flex:1"><strong>Ph:</strong> {{ customer.mobile_number if customer and customer.mobile_number else '-' }}</div>
     <div style="flex:1"><strong>GSTIN:</strong> {{ invoice.customer_gstin }}</div>
   </div>
   <table class="table table-bordered mb-2" style="font-size:14px;table-layout:fixed;width:100%;">

@@ -12,11 +12,31 @@
             <label>GSTIN</label>
             <input type="text" name="gstin" class="form-control" value="{{ form_customer.gstin if form_customer else '' }}">
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
+            <label>Contact Person</label>
+            <input type="text" name="contact_person" class="form-control" value="{{ form_customer.contact_person if form_customer else '' }}">
+        </div>
+        <div class="col-md-3">
+            <label>Mobile Number</label>
+            <input type="text" name="mobile_number" class="form-control" value="{{ form_customer.mobile_number if form_customer else '' }}">
+        </div>
+        <div class="col-md-3">
+            <label>WhatsApp Number</label>
+            <input type="text" name="whatsapp_number" class="form-control" value="{{ form_customer.whatsapp_number if form_customer else '' }}">
+        </div>
+        <div class="col-md-6">
             <label>Address</label>
             <input type="text" name="address" class="form-control" value="{{ form_customer.address if form_customer else '' }}">
         </div>
-        <div class="col-md-2 d-flex align-items-end">
+        <div class="col-md-3 d-flex align-items-center mt-4">
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="reminder_opt_in" name="reminder_opt_in" {% if form_customer is none or form_customer.reminder_opt_in %}checked{% endif %}>
+                <label class="form-check-label" for="reminder_opt_in">
+                    Allow reminder messages
+                </label>
+            </div>
+        </div>
+        <div class="col-md-3 d-flex align-items-end">
             <button type="submit" class="btn btn-primary">{{ 'Update' if form_customer else 'Add' }}</button>
             {% if form_customer %}
             <a href="{{ url_for('customers.crud_customers') }}" class="btn btn-secondary ms-2">Cancel</a>
@@ -26,7 +46,7 @@
     <!-- Search form -->
         <form method="get" class="row g-3 align-items-end mb-3">
             <div class="col-md-6">
-                <input type="text" name="search" class="form-control" style="min-width:350px;max-width:100%;" placeholder="Search customer name, GSTIN..." value="{{ search|default('') }}">
+                <input type="text" name="search" class="form-control" style="min-width:350px;max-width:100%;" placeholder="Search customer name, GSTIN, mobile, WhatsApp..." value="{{ search|default('') }}">
             </div>
             <div class="col-auto">
                 <button type="submit" class="btn btn-outline-primary">Search</button>
@@ -36,6 +56,9 @@
         <thead>
             <tr>
                 <th>Name</th>
+                <th>Contact Person</th>
+                <th>Mobile</th>
+                <th>WhatsApp</th>
                 <th>GSTIN</th>
                 <th>Address</th>
                 <th>Actions</th>
@@ -45,9 +68,13 @@
             {% for customer in customers %}
             <tr>
                 <td>{{ customer.name }}</td>
+                <td>{{ customer.contact_person or '-' }}</td>
+                <td>{{ customer.mobile_number or '-' }}</td>
+                <td>{{ customer.whatsapp_number or '-' }}</td>
                 <td>{{ customer.gstin }}</td>
                 <td>{{ customer.address }}</td>
                                 <td>
+                                        <a href="{{ url_for('customers.customer_ledger', customer_id=customer.id) }}" class="btn btn-sm btn-secondary">Ledger</a>
                                         <a href="?edit_id={{ customer.id }}" class="btn btn-sm btn-warning">Edit</a>
                                         <form method="post" action="{{ url_for('customers.crud_customers') }}" style="display:inline;">
                                             <input type="hidden" name="delete_id" value="{{ customer.id }}">

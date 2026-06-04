@@ -42,6 +42,17 @@ class ActivityLog(db.Model):
     details = db.Column(db.Text)
     user = db.relationship('User')
 
+
+class ReminderTemplate(db.Model):
+    __tablename__ = 'reminder_templates'
+    id = db.Column(db.Integer, primary_key=True)
+    template_key = db.Column(db.String(32), unique=True, nullable=False)
+    title = db.Column(db.String(64), nullable=False)
+    message = db.Column(db.Text, nullable=False)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 class Product(db.Model, AuditMixin):
     __tablename__ = 'products'
     id = db.Column(db.Integer, primary_key=True)
@@ -141,6 +152,10 @@ class Customer(db.Model, AuditMixin):
     name = db.Column(db.String(100), nullable=False)
     gstin = db.Column(db.String(20))
     address = db.Column(db.String(200))
+    contact_person = db.Column(db.String(100))
+    mobile_number = db.Column(db.String(20))
+    whatsapp_number = db.Column(db.String(20))
+    reminder_opt_in = db.Column(db.Boolean, nullable=False, default=True)
 
 
 # Company model for storing company information
@@ -189,6 +204,8 @@ def ensure_billing_schema():
     table_names = inspector.get_table_names()
 
     Company.__table__.create(bind=db.engine, checkfirst=True)
+    Customer.__table__.create(bind=db.engine, checkfirst=True)
+    ReminderTemplate.__table__.create(bind=db.engine, checkfirst=True)
 
     if 'invoices' in table_names:
         columns = {col['name'] for col in inspector.get_columns('invoices')}
@@ -239,6 +256,38 @@ def ensure_billing_schema():
 
     inspector = inspect(db.engine)
     table_names = inspector.get_table_names()
+    if 'customers' in table_names:
+        customer_columns = {col['name'] for col in inspector.get_columns('customers')}
+        alter_statements = []
+        if 'contact_person' not in customer_columns:
+            alter_statements.append('ALTER TABLE customers ADD COLUMN contact_person VARCHAR(100)')
+        if 'mobile_number' not in customer_columns:
+            alter_statements.append('ALTER TABLE customers ADD COLUMN mobile_number VARCHAR(20)')
+        if 'whatsapp_number' not in customer_columns:
+            alter_statements.append('ALTER TABLE customers ADD COLUMN whatsapp_number VARCHAR(20)')
+        if 'reminder_opt_in' not in customer_columns:
+            alter_statements.append('ALTER TABLE customers ADD COLUMN reminder_opt_in BOOLEAN DEFAULT 1')
+        if alter_statements:
+            with db.engine.begin() as connection:
+                for stmt in alter_statements:
+                    connection.execute(text(stmt))
+                connection.execute(
+                    text(
+                        """
+                        UPDATE customers
+                        SET
+                            whatsapp_number = CASE
+                                WHEN (whatsapp_number IS NULL OR TRIM(whatsapp_number) = '')
+                                    AND mobile_number IS NOT NULL
+                                    AND TRIM(mobile_number) <> ''
+                                THEN mobile_number
+                                ELSE whatsapp_number
+                            END,
+                            reminder_opt_in = COALESCE(reminder_opt_in, 1)
+                        """
+                    )
+                )
+
     if 'payments' in table_names:
         payment_columns = {col['name'] for col in inspector.get_columns('payments')}
         alter_statements = []
@@ -258,12 +307,53 @@ def ensure_billing_schema():
                 connection.execute(text('ALTER TABLE company ADD COLUMN finance_enabled BOOLEAN DEFAULT 1'))
                 connection.execute(text('UPDATE company SET finance_enabled = 1 WHERE finance_enabled IS NULL'))
 
+    seeded_rows = False
+
     # Seed default expense categories once for usability.
     default_categories = ['Rent', 'Salary', 'Utilities', 'Transport', 'Maintenance', 'Miscellaneous']
     for name in default_categories:
         existing = ExpenseCategory.query.filter(func.lower(ExpenseCategory.name) == name.lower()).first()
         if not existing:
             db.session.add(ExpenseCategory(name=name))
+            seeded_rows = True
+
+    # Seed default reminder templates for communication workflows.
+    default_templates = {
+        'due_today': {
+            'title': 'Due Today Reminder',
+            'message': (
+                'Hello {customer_name}, Invoice {invoice_number} dated {invoice_date} '
+                'is due today. Pending amount: Rs.{pending_amount}. Thank you.'
+            ),
+        },
+        'overdue': {
+            'title': 'Overdue Reminder',
+            'message': (
+                'Hello {customer_name}, Invoice {invoice_number} dated {invoice_date} '
+                'is overdue. Pending amount: Rs.{pending_amount}. '
+                'Please clear the dues at the earliest.'
+            ),
+        },
+        'thank_you': {
+            'title': 'Payment Thank You',
+            'message': (
+                'Thank you {customer_name} for your payment on Invoice {invoice_number}. '
+                'Received amount: Rs.{paid_amount}. We appreciate your prompt support.'
+            ),
+        },
+    }
+    for template_key, payload in default_templates.items():
+        existing_template = ReminderTemplate.query.filter_by(template_key=template_key).first()
+        if not existing_template:
+            db.session.add(
+                ReminderTemplate(
+                    template_key=template_key,
+                    title=payload['title'],
+                    message=payload['message'],
+                    is_active=True,
+                )
+            )
+            seeded_rows = True
 
     # Normalize historical payment mode values to keep reporting consistent.
     changed = False
@@ -288,5 +378,5 @@ def ensure_billing_schema():
                 exp.payment_mode = normalized or 'cash'
                 changed = True
 
-    if changed or db.session.new:
+    if changed or seeded_rows:
         db.session.commit()

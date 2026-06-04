@@ -3,12 +3,13 @@ import pandas as pd
 from flask import send_file, render_template, redirect, url_for, flash, request
 import io
 import re
+from urllib.parse import quote
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from flask_login import login_required, current_user
 from .routes import invoices_bp
-from models import db, Invoice, InvoiceItem, Product, ActivityLog, Payment, BankAccount
-from datetime import datetime
+from models import db, Invoice, InvoiceItem, Product, ActivityLog, Payment, BankAccount, Customer, ReminderTemplate
+from datetime import datetime, date
 from sqlalchemy import func
 
 
@@ -182,6 +183,73 @@ def _payment_snapshot(payment):
 def _can_receive_payment(invoice):
     return round(float(invoice.balance_amount or 0), 2) > 0
 
+
+def _sanitize_phone_for_whatsapp(raw_value):
+    digits = ''.join(ch for ch in str(raw_value or '') if ch.isdigit())
+    if not digits:
+        return ''
+    if len(digits) == 10:
+        return f'91{digits}'
+    if len(digits) > 10 and digits.startswith('0'):
+        return digits.lstrip('0')
+    return digits
+
+
+def _find_customer_for_invoice(invoice):
+    candidates = Customer.query.filter(func.lower(Customer.name) == (invoice.customer_name or '').lower()).all()
+    if not candidates:
+        return None
+
+    normalized_gstin = (invoice.customer_gstin or '').strip().lower()
+    normalized_address = (invoice.customer_address or '').strip().lower()
+
+    for customer in candidates:
+        if normalized_gstin and (customer.gstin or '').strip().lower() == normalized_gstin:
+            return customer
+    for customer in candidates:
+        if normalized_address and (customer.address or '').strip().lower() == normalized_address:
+            return customer
+    return candidates[0]
+
+
+def _invoice_whatsapp_message(invoice):
+    pending_balance = round(float(invoice.balance_amount if invoice.balance_amount is not None else invoice.total or 0), 2)
+    return (
+        f"Hello {invoice.customer_name}, Invoice {invoice.invoice_number} dated {invoice.date.strftime('%d-%m-%Y')} "
+        f"has total Rs.{float(invoice.total or 0):.2f}. Pending amount: Rs.{pending_balance:.2f}. "
+        f"Invoice PDF: {request.url_root.rstrip('/')}{url_for('invoices.download_invoice_pdf', invoice_id=invoice.id)}"
+    )
+
+
+def _get_template_message(template_key, fallback_message):
+    template = ReminderTemplate.query.filter_by(template_key=template_key, is_active=True).first()
+    if template and template.message:
+        return template.message
+    return fallback_message
+
+
+def _render_template_message(template_text, invoice):
+    pending_balance = round(float(invoice.balance_amount if invoice.balance_amount is not None else invoice.total or 0), 2)
+    paid_amount = round(float(invoice.paid_amount or 0), 2)
+    return template_text.format(
+        customer_name=invoice.customer_name,
+        invoice_number=invoice.invoice_number,
+        invoice_date=invoice.date.strftime('%d-%m-%Y') if invoice.date else '-',
+        pending_amount=f'{pending_balance:.2f}',
+        paid_amount=f'{paid_amount:.2f}',
+    )
+
+
+def _reminder_whatsapp_message(invoice):
+    is_overdue = (invoice.date.date() if invoice.date else date.today()) < date.today()
+    template_key = 'overdue' if is_overdue else 'due_today'
+    fallback_message = (
+        'Hello {customer_name}, Invoice {invoice_number} dated {invoice_date} '
+        'has pending amount Rs.{pending_amount}. Please clear the dues at the earliest. Thank you.'
+    )
+    template_text = _get_template_message(template_key, fallback_message)
+    return _render_template_message(template_text, invoice)
+
 @invoices_bp.route('/export/excel')
 @login_required
 def export_invoices_excel():
@@ -280,6 +348,7 @@ def track_invoice_print(invoice_id):
 @login_required
 def view_invoice(invoice_id):
     invoice = Invoice.query.get_or_404(invoice_id)
+    customer = _find_customer_for_invoice(invoice)
     payments = Payment.query.filter_by(invoice_id=invoice.id).order_by(Payment.payment_date.desc(), Payment.id.desc()).all()
     overpaid_amount = round(max(float(invoice.paid_amount or 0) - float(invoice.total or 0), 0.0), 2)
     can_receive_payment = _can_receive_payment(invoice)
@@ -295,10 +364,85 @@ def view_invoice(invoice_id):
         invoice=invoice,
         items=items,
         company=company,
+        customer=customer,
         payments=payments,
         overpaid_amount=overpaid_amount,
         can_receive_payment=can_receive_payment,
     )
+
+
+@invoices_bp.route('/<int:invoice_id>/share-whatsapp')
+@login_required
+def share_invoice_whatsapp(invoice_id):
+    invoice = Invoice.query.get_or_404(invoice_id)
+    customer = _find_customer_for_invoice(invoice)
+    phone = ''
+    if customer:
+        phone = _sanitize_phone_for_whatsapp(customer.whatsapp_number or customer.mobile_number)
+
+    log_details = (
+        f'customer_id={customer.id if customer else "-"}; invoice_id={invoice.id}; '
+        f'invoice_no={invoice.invoice_number}; channel={"whatsapp" if phone else "manual"}'
+    )
+    db.session.add(
+        ActivityLog(
+            user_id=current_user.id,
+            username=current_user.username,
+            action='Invoice WhatsApp Share Opened',
+            details=log_details,
+        )
+    )
+    db.session.commit()
+
+    if not phone:
+        flash('WhatsApp number not found for this customer. Add it in Customer master.', 'warning')
+        return redirect(url_for('invoices.view_invoice', invoice_id=invoice.id))
+
+    whatsapp_url = f'https://wa.me/{phone}?text={quote(_invoice_whatsapp_message(invoice))}'
+    flash('WhatsApp share opened.', 'success')
+    return redirect(whatsapp_url)
+
+
+@invoices_bp.route('/<int:invoice_id>/send-reminder')
+@login_required
+def send_invoice_reminder(invoice_id):
+    invoice = Invoice.query.get_or_404(invoice_id)
+    pending_balance = round(float(invoice.balance_amount if invoice.balance_amount is not None else invoice.total or 0), 2)
+    if pending_balance <= 0:
+        flash('Invoice is already settled. No reminder needed.', 'info')
+        return redirect(url_for('invoices.view_invoice', invoice_id=invoice.id))
+
+    customer = _find_customer_for_invoice(invoice)
+    if customer and not customer.reminder_opt_in:
+        flash('Customer has reminders disabled.', 'info')
+        return redirect(url_for('invoices.view_invoice', invoice_id=invoice.id))
+
+    phone = ''
+    if customer:
+        phone = _sanitize_phone_for_whatsapp(customer.whatsapp_number or customer.mobile_number)
+
+    log_details = (
+        f'customer_id={customer.id if customer else "-"}; customer={invoice.customer_name}; invoice_id={invoice.id}; '
+        f'invoice_no={invoice.invoice_number}; balance={pending_balance:.2f}; '
+        f'channel={"whatsapp" if phone else "manual"}'
+    )
+    db.session.add(
+        ActivityLog(
+            user_id=current_user.id,
+            username=current_user.username,
+            action='Customer Reminder Sent',
+            details=log_details,
+        )
+    )
+    db.session.commit()
+
+    if not phone:
+        flash('Reminder logged. Add WhatsApp number to send directly.', 'warning')
+        return redirect(url_for('invoices.view_invoice', invoice_id=invoice.id))
+
+    whatsapp_url = f'https://wa.me/{phone}?text={quote(_reminder_whatsapp_message(invoice))}'
+    flash('Reminder logged and WhatsApp message prepared.', 'success')
+    return redirect(whatsapp_url)
 
 
 @invoices_bp.route('/<int:invoice_id>/receive-payment', methods=['GET', 'POST'])
@@ -602,7 +746,6 @@ def crud_invoices():
     can_manage_invoices = _can_manage_invoices()
     products = Product.query.all()
     bank_accounts = BankAccount.query.filter_by(is_active=True).order_by(BankAccount.account_name.asc()).all()
-    from models import Customer
     customers = Customer.query.order_by(Customer.name).all()
     if request.method == 'POST':
         # Delete

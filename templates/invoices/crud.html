@@ -222,6 +222,7 @@
         </form>
         {% endif %}
         <a href="{{ url_for('invoices.view_invoice', invoice_id=invoice.id) }}" class="btn btn-sm btn-secondary">View</a>
+        <a href="{{ url_for('invoices.share_invoice_whatsapp', invoice_id=invoice.id) }}" class="btn btn-sm btn-outline-success">WhatsApp</a>
         {% if finance_feature_enabled %}
         {% if (invoice.balance_amount if invoice.balance_amount is not none else invoice.total) > 0 %}
         <a href="{{ url_for('invoices.receive_payment', invoice_id=invoice.id) }}" class="btn btn-sm btn-success">Receive Payment</a>

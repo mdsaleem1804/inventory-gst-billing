@@ -21,6 +21,11 @@
         </p>
         <button type="submit" class="btn btn-primary">Save Settings</button>
       </form>
+      <hr>
+      <div class="d-flex gap-2 flex-wrap">
+        <a href="{{ url_for('settings.reminder_templates') }}" class="btn btn-outline-primary">Manage Reminder Templates</a>
+        <a href="{{ url_for('settings.communication_logs') }}" class="btn btn-outline-secondary">View Communication Logs</a>
+      </div>
     </div>
   </div>
 </div>
