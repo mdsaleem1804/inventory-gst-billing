@@ -6,34 +6,43 @@
         <button type="submit" name="backup" class="btn btn-primary mb-3">Create Backup</button>
     </form>
     <h4>Available Backups</h4>
-    <form method="post">
-        <div class="table-responsive">
-            <table class="table table-bordered">
-                <thead>
-                    <tr>
-                        <th>Backup File</th>
-                        <th>Download</th>
-                        <th>Restore</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for file in backup_files %}
-                    <tr>
-                        <td>{{ file }}</td>
-                        <td><a href="{{ url_for('settings.download_backup', filename=file) }}" class="btn btn-sm btn-success">Download</a></td>
-                        <td>
+    <div class="table-responsive">
+        <table class="table table-bordered">
+            <thead>
+                <tr>
+                    <th>Backup File</th>
+                    <th>Download</th>
+                    <th>Restore</th>
+                    <th>Delete</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for file in backup_files %}
+                <tr>
+                    <td>{{ file }}</td>
+                    <td><a href="{{ url_for('settings.download_backup', filename=file) }}" class="btn btn-sm btn-success">Download</a></td>
+                    <td>
+                        <form method="post" class="d-inline">
+                            <input type="hidden" name="restore_file" value="{{ file }}">
                             <button type="submit" name="restore" value="restore" class="btn btn-sm btn-warning" onclick="return confirm('Restore this backup? The app will need to be restarted.');">
                                 Restore
                             </button>
-                            <input type="hidden" name="restore_file" value="{{ file }}">
-                        </td>
-                    </tr>
-                    {% else %}
-                    <tr><td colspan="3">No backups found.</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </form>
+                        </form>
+                    </td>
+                    <td>
+                        <form method="post" class="d-inline">
+                            <input type="hidden" name="delete_file" value="{{ file }}">
+                            <button type="submit" name="delete" value="delete" class="btn btn-sm btn-danger" onclick="return confirm('Delete this backup permanently?');">
+                                Delete
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4">No backups found.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 </div>
 {% endblock %}

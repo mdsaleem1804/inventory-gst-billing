@@ -16,6 +16,15 @@ def _require_admin():
         return False
     return True
 
+
+def _get_backup_path(filename):
+    if not filename:
+        return None
+    safe_name = os.path.basename(filename)
+    if safe_name != filename:
+        return None
+    return os.path.join(BACKUP_FOLDER, safe_name)
+
 @settings_bp.route('/backup', methods=['GET', 'POST'])
 @login_required
 def backup_restore():
@@ -37,12 +46,26 @@ def backup_restore():
             if not _require_admin():
                 return redirect(url_for('dashboard.dashboard'))
             restore_file = request.form.get('restore_file')
-            if restore_file and restore_file in backup_files:
-                src = os.path.join(BACKUP_FOLDER, restore_file)
+            backup_path = _get_backup_path(restore_file)
+            if restore_file and restore_file in backup_files and backup_path and os.path.exists(backup_path):
+                src = backup_path
                 dst = os.path.join(current_app.root_path, DB_FILENAME)
                 shutil.copy2(src, dst)
                 flash('Database restored successfully. Please restart the app.', 'success')
                 return redirect(url_for('settings.backup_restore'))
+            flash('Selected backup file was not found.', 'danger')
+            return redirect(url_for('settings.backup_restore'))
+        elif 'delete' in request.form:
+            if not _require_admin():
+                return redirect(url_for('dashboard.dashboard'))
+            delete_file = request.form.get('delete_file')
+            backup_path = _get_backup_path(delete_file)
+            if delete_file and delete_file in backup_files and backup_path and os.path.exists(backup_path):
+                os.remove(backup_path)
+                flash('Backup deleted successfully.', 'success')
+                return redirect(url_for('settings.backup_restore'))
+            flash('Selected backup file was not found.', 'danger')
+            return redirect(url_for('settings.backup_restore'))
     return render_template('settings/backup_restore.html', backup_files=backup_files)
 
 @settings_bp.route('/download/<filename>')
@@ -50,8 +73,8 @@ def backup_restore():
 def download_backup(filename):
     if not _require_admin():
         return redirect(url_for('dashboard.dashboard'))
-    backup_path = os.path.join(BACKUP_FOLDER, filename)
-    if os.path.exists(backup_path):
+    backup_path = _get_backup_path(filename)
+    if backup_path and os.path.exists(backup_path):
         return send_file(backup_path, as_attachment=True)
     flash('File not found.', 'danger')
     return redirect(url_for('settings.backup_restore'))

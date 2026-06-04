@@ -49,6 +49,7 @@ def load_user(user_id):
 
 @app.before_request
 def enforce_password_change():
+    
     if not current_user.is_authenticated:
         return
     if not session.get('force_password_change'):
