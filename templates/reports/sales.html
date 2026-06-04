@@ -35,7 +35,9 @@
       <th>Total</th>
       <th>CGST</th>
       <th>SGST</th>
+      {% if finance_feature_enabled %}
       <th>Status</th>
+      {% endif %}
     </tr>
   </thead>
   <tbody>
@@ -47,6 +49,7 @@
       <td class="text-end">{{ inv.total|indian_currency }}</td>
       <td class="text-end">{{ inv.cgst|indian_currency }}</td>
       <td class="text-end">{{ inv.sgst|indian_currency }}</td>
+      {% if finance_feature_enabled %}
       <td>
         {% if (inv.paid_amount or 0) > (inv.total or 0) %}
         <span class="badge text-bg-warning">Overpaid by {{ ((inv.paid_amount or 0) - (inv.total or 0))|indian_currency }}</span>
@@ -58,9 +61,10 @@
         <span class="badge bg-danger">Unpaid</span>
         {% endif %}
       </td>
+      {% endif %}
     </tr>
     {% else %}
-    <tr><td colspan="7" class="text-center">No records found.</td></tr>
+    <tr><td colspan="{{ 7 if finance_feature_enabled else 6 }}" class="text-center">No records found.</td></tr>
     {% endfor %}
   </tbody>
 </table>

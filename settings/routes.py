@@ -3,6 +3,7 @@ from flask_login import login_required, current_user
 import os
 import shutil
 from datetime import datetime
+from models import db, Company
 
 settings_bp = Blueprint('settings', __name__, url_prefix='/settings')
 
@@ -78,3 +79,23 @@ def download_backup(filename):
         return send_file(backup_path, as_attachment=True)
     flash('File not found.', 'danger')
     return redirect(url_for('settings.backup_restore'))
+
+
+@settings_bp.route('/developer', methods=['GET', 'POST'])
+@login_required
+def developer_settings():
+    if not _require_admin():
+        return redirect(url_for('dashboard.dashboard'))
+
+    company = Company.query.first()
+    if company is None:
+        flash('Create company information before changing application feature settings.', 'warning')
+        return redirect(url_for('company.index'))
+
+    if request.method == 'POST':
+        company.finance_enabled = request.form.get('finance_enabled') == 'on'
+        db.session.commit()
+        flash('Application feature settings updated successfully.', 'success')
+        return redirect(url_for('settings.developer_settings'))
+
+    return render_template('settings/developer.html', company=company)

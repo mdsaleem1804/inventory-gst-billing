@@ -153,8 +153,16 @@ class Company(db.Model):
     phone_number = db.Column(db.String(32), nullable=True)
     address = db.Column(db.String(256), nullable=True)
     logo = db.Column(db.String(256), nullable=True)  # Path to logo image
+    finance_enabled = db.Column(db.Boolean, nullable=False, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+def is_finance_feature_enabled():
+    company = Company.query.first()
+    if company is None:
+        return True
+    return bool(getattr(company, 'finance_enabled', True))
 
 
 def _normalize_payment_mode_value(mode):
@@ -179,6 +187,8 @@ def _normalize_payment_mode_value(mode):
 def ensure_billing_schema():
     inspector = inspect(db.engine)
     table_names = inspector.get_table_names()
+
+    Company.__table__.create(bind=db.engine, checkfirst=True)
 
     if 'invoices' in table_names:
         columns = {col['name'] for col in inspector.get_columns('invoices')}
@@ -238,6 +248,15 @@ def ensure_billing_schema():
             with db.engine.begin() as connection:
                 for stmt in alter_statements:
                     connection.execute(text(stmt))
+
+    inspector = inspect(db.engine)
+    table_names = inspector.get_table_names()
+    if 'company' in table_names:
+        company_columns = {col['name'] for col in inspector.get_columns('company')}
+        if 'finance_enabled' not in company_columns:
+            with db.engine.begin() as connection:
+                connection.execute(text('ALTER TABLE company ADD COLUMN finance_enabled BOOLEAN DEFAULT 1'))
+                connection.execute(text('UPDATE company SET finance_enabled = 1 WHERE finance_enabled IS NULL'))
 
     # Seed default expense categories once for usability.
     default_categories = ['Rent', 'Salary', 'Utilities', 'Transport', 'Maintenance', 'Miscellaneous']

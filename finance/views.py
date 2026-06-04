@@ -6,7 +6,7 @@ from sqlalchemy import func
 import io
 import pandas as pd
 
-from models import db, Expense, ExpenseCategory, BankAccount, Payment, ActivityLog
+from models import db, Expense, ExpenseCategory, BankAccount, Payment, ActivityLog, is_finance_feature_enabled
 from .routes import finance_bp
 
 
@@ -16,6 +16,13 @@ def _export_amount(value):
 
 def _is_finance_editor():
     return current_user.role in ('admin', 'approver')
+
+
+def _require_finance_feature():
+    if not is_finance_feature_enabled():
+        flash('Finance module is disabled for this customer.', 'warning')
+        return False
+    return True
 
 
 def _normalize_payment_mode(mode):
@@ -56,6 +63,8 @@ def _log_finance(action, details):
 @finance_bp.route('/expenses', methods=['GET', 'POST'])
 @login_required
 def expenses():
+    if not _require_finance_feature():
+        return redirect(url_for('dashboard.dashboard'))
     if request.method == 'POST':
         if not _is_finance_editor():
             flash('Only admin or approver can add/delete expenses.', 'danger')
@@ -211,6 +220,8 @@ def expenses():
 @finance_bp.route('/bank-book', methods=['GET'])
 @login_required
 def bank_book():
+    if not _require_finance_feature():
+        return redirect(url_for('dashboard.dashboard'))
     from_date = request.args.get('from_date', '')
     to_date = request.args.get('to_date', '')
     recently_mapped_payment_id = request.args.get('recently_mapped_payment_id', type=int)
@@ -364,6 +375,8 @@ def bank_book():
 @finance_bp.route('/bank-accounts', methods=['GET', 'POST'])
 @login_required
 def bank_accounts():
+    if not _require_finance_feature():
+        return redirect(url_for('dashboard.dashboard'))
     if request.method == 'POST':
         if not _is_finance_editor():
             flash('Only admin or approver can manage bank accounts.', 'danger')

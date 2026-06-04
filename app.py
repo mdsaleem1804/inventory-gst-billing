@@ -33,7 +33,7 @@ app.config.from_object(Config)
 
 
 
-from models import db, User, ensure_billing_schema
+from models import db, User, ensure_billing_schema, is_finance_feature_enabled
 from flask_login import LoginManager, current_user
 db.init_app(app)
 with app.app_context():
@@ -45,6 +45,11 @@ login_manager.login_view = 'auth.login'
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
+
+
+@app.context_processor
+def inject_feature_flags():
+    return {'finance_feature_enabled': is_finance_feature_enabled()}
 
 
 @app.before_request

@@ -36,12 +36,15 @@
           </a>
           <ul class="dropdown-menu" aria-labelledby="reportsDropdown">
             <li><a class="dropdown-item" href="/reports/sales">Sales Report</a></li>
+            {% if finance_feature_enabled %}
             <li><a class="dropdown-item" href="/reports/payments">Payments Report</a></li>
             <li><a class="dropdown-item" href="/reports/outstanding-aging">Outstanding Aging Report</a></li>
+            {% endif %}
             <li><a class="dropdown-item" href="/reports/products">Product Report</a></li>
             <li><a class="dropdown-item" href="/reports/customers">Customer Report</a></li>
           </ul>
         </li>
+        {% if finance_feature_enabled %}
         <li class="nav-item dropdown">
           <a class="nav-link dropdown-toggle fw-bold text-white" style="font-size:1.15rem;" href="#" id="financeDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
             Finance
@@ -52,6 +55,7 @@
             <li><a class="dropdown-item" href="/finance/bank-accounts">Bank Accounts</a></li>
           </ul>
         </li>
+        {% endif %}
         <li class="nav-item dropdown">
           <a class="nav-link dropdown-toggle fw-bold text-white" style="font-size:1.15rem;" href="#" id="settingsDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
             Settings
@@ -61,6 +65,7 @@
             <li><a class="dropdown-item" href="/units/">Units</a></li>
             <li><a class="dropdown-item" href="/settings/backup">Data Backup/Restore</a></li>
             {% if current_user.is_authenticated and current_user.role == 'admin' %}
+            <li><a class="dropdown-item" href="/settings/developer">Application Feature Settings</a></li>
             <li><a class="dropdown-item" href="/users/">Users</a></li>
             <li><a class="dropdown-item" href="/users/activity-logs">Activity Logs</a></li>
             {% endif %}

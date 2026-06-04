@@ -1,7 +1,7 @@
 from flask import render_template, request, send_file, Response
 from flask_login import login_required, current_user
 from .routes import reports_bp
-from models import db, Invoice, Product, Customer, ActivityLog, Payment
+from models import db, Invoice, Product, Customer, ActivityLog, Payment, is_finance_feature_enabled
 import io
 import pandas as pd
 from reportlab.lib.pagesizes import A4
@@ -25,6 +25,14 @@ def _log_report_export(action, details):
 		)
 	)
 	db.session.commit()
+
+
+def _require_finance_reports():
+	if not is_finance_feature_enabled():
+		from flask import flash, redirect, url_for
+		flash('Finance reporting is disabled for this customer.', 'warning')
+		return redirect(url_for('dashboard.dashboard'))
+	return None
 
 
 @reports_bp.route('/sales')
@@ -217,6 +225,10 @@ def customer_report():
 @reports_bp.route('/payments')
 @login_required
 def payment_report():
+	blocked = _require_finance_reports()
+	if blocked:
+		return blocked
+
 	from_date = request.args.get('from_date', '')
 	to_date = request.args.get('to_date', '')
 	search = request.args.get('search', '')
@@ -382,6 +394,10 @@ def payment_report():
 @reports_bp.route('/outstanding-aging')
 @login_required
 def outstanding_aging_report():
+	blocked = _require_finance_reports()
+	if blocked:
+		return blocked
+
 	as_of_date_str = request.args.get('as_of_date', '')
 	search = request.args.get('search', '')
 	priority_threshold = request.args.get('priority_threshold', '10000')

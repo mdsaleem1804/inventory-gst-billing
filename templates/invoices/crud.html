@@ -70,7 +70,7 @@
       </div>
       <button type="button" class="btn btn-secondary mb-3" id="add-item">Add Product</button>
 
-      {% if not form_invoice %}
+      {% if not form_invoice and finance_feature_enabled %}
       <div class="card border-0 bg-light mb-3">
         <div class="card-body">
           <h5 class="mb-3">Payment At Billing</h5>
@@ -181,9 +181,11 @@
       <th>Date</th>
       <th>Customer</th>
       <th>Total</th>
+      {% if finance_feature_enabled %}
       <th>Paid</th>
       <th>Balance</th>
       <th>Status</th>
+      {% endif %}
       <th>CGST</th>
       <th>SGST</th>
       <th>Actions</th>
@@ -196,6 +198,7 @@
       <td>{{ invoice.date.strftime('%Y-%m-%d') }}</td>
       <td>{{ invoice.customer_name }}</td>
       <td class="text-end">{{ invoice.total|indian_currency }}</td>
+      {% if finance_feature_enabled %}
       <td class="text-end">{{ (invoice.paid_amount or 0)|indian_currency }}</td>
       <td class="text-end">{{ (invoice.balance_amount if invoice.balance_amount is not none else invoice.total)|indian_currency }}</td>
       <td>
@@ -207,6 +210,7 @@
         <span class="badge bg-danger">Unpaid</span>
         {% endif %}
       </td>
+      {% endif %}
       <td class="text-end">{{ invoice.cgst|indian_currency }}</td>
       <td class="text-end">{{ invoice.sgst|indian_currency }}</td>
       <td>
@@ -218,15 +222,17 @@
         </form>
         {% endif %}
         <a href="{{ url_for('invoices.view_invoice', invoice_id=invoice.id) }}" class="btn btn-sm btn-secondary">View</a>
+        {% if finance_feature_enabled %}
         {% if (invoice.balance_amount if invoice.balance_amount is not none else invoice.total) > 0 %}
         <a href="{{ url_for('invoices.receive_payment', invoice_id=invoice.id) }}" class="btn btn-sm btn-success">Receive Payment</a>
         {% else %}
         <span class="badge bg-success">Paid</span>
         {% endif %}
+        {% endif %}
       </td>
     </tr>
     {% else %}
-    <tr><td colspan="10" class="text-center">No invoices found.</td></tr>
+    <tr><td colspan="{{ 10 if finance_feature_enabled else 7 }}" class="text-center">No invoices found.</td></tr>
     {% endfor %}
   </tbody>
 </table>
