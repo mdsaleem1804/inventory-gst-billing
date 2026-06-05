@@ -53,6 +53,35 @@ class ReminderTemplate(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+
+class FollowUpTask(db.Model, AuditMixin):
+    __tablename__ = 'follow_up_tasks'
+    id = db.Column(db.Integer, primary_key=True)
+    customer_id = db.Column(db.Integer, db.ForeignKey('customers.id'), nullable=False)
+    invoice_id = db.Column(db.Integer, db.ForeignKey('invoices.id'), nullable=True)
+    title = db.Column(db.String(128), nullable=False)
+    notes = db.Column(db.Text, nullable=True)
+    due_date = db.Column(db.Date, nullable=True)
+    status = db.Column(db.String(24), nullable=False, default='open')
+    assigned_to_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    completed_at = db.Column(db.DateTime, nullable=True)
+    customer = db.relationship('Customer')
+    invoice = db.relationship('Invoice')
+    assigned_to_user = db.relationship('User')
+
+
+class PromiseToPay(db.Model, AuditMixin):
+    __tablename__ = 'promise_to_pay'
+    id = db.Column(db.Integer, primary_key=True)
+    customer_id = db.Column(db.Integer, db.ForeignKey('customers.id'), nullable=False)
+    invoice_id = db.Column(db.Integer, db.ForeignKey('invoices.id'), nullable=True)
+    promised_amount = db.Column(db.Float, nullable=False, default=0)
+    promised_date = db.Column(db.Date, nullable=True)
+    note = db.Column(db.Text, nullable=True)
+    status = db.Column(db.String(24), nullable=False, default='open')
+    customer = db.relationship('Customer')
+    invoice = db.relationship('Invoice')
+
 class Product(db.Model, AuditMixin):
     __tablename__ = 'products'
     id = db.Column(db.Integer, primary_key=True)
@@ -156,6 +185,7 @@ class Customer(db.Model, AuditMixin):
     mobile_number = db.Column(db.String(20))
     whatsapp_number = db.Column(db.String(20))
     reminder_opt_in = db.Column(db.Boolean, nullable=False, default=True)
+    credit_limit = db.Column(db.Float, nullable=False, default=0)
 
 
 # Company model for storing company information
@@ -169,6 +199,7 @@ class Company(db.Model):
     address = db.Column(db.String(256), nullable=True)
     logo = db.Column(db.String(256), nullable=True)  # Path to logo image
     finance_enabled = db.Column(db.Boolean, nullable=False, default=True)
+    credit_block_on_exceed = db.Column(db.Boolean, nullable=False, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -206,6 +237,8 @@ def ensure_billing_schema():
     Company.__table__.create(bind=db.engine, checkfirst=True)
     Customer.__table__.create(bind=db.engine, checkfirst=True)
     ReminderTemplate.__table__.create(bind=db.engine, checkfirst=True)
+    FollowUpTask.__table__.create(bind=db.engine, checkfirst=True)
+    PromiseToPay.__table__.create(bind=db.engine, checkfirst=True)
 
     if 'invoices' in table_names:
         columns = {col['name'] for col in inspector.get_columns('invoices')}
@@ -267,6 +300,8 @@ def ensure_billing_schema():
             alter_statements.append('ALTER TABLE customers ADD COLUMN whatsapp_number VARCHAR(20)')
         if 'reminder_opt_in' not in customer_columns:
             alter_statements.append('ALTER TABLE customers ADD COLUMN reminder_opt_in BOOLEAN DEFAULT 1')
+        if 'credit_limit' not in customer_columns:
+            alter_statements.append('ALTER TABLE customers ADD COLUMN credit_limit FLOAT DEFAULT 0')
         if alter_statements:
             with db.engine.begin() as connection:
                 for stmt in alter_statements:
@@ -306,6 +341,42 @@ def ensure_billing_schema():
             with db.engine.begin() as connection:
                 connection.execute(text('ALTER TABLE company ADD COLUMN finance_enabled BOOLEAN DEFAULT 1'))
                 connection.execute(text('UPDATE company SET finance_enabled = 1 WHERE finance_enabled IS NULL'))
+        if 'credit_block_on_exceed' not in company_columns:
+            with db.engine.begin() as connection:
+                connection.execute(text('ALTER TABLE company ADD COLUMN credit_block_on_exceed BOOLEAN DEFAULT 0'))
+                connection.execute(text('UPDATE company SET credit_block_on_exceed = 0 WHERE credit_block_on_exceed IS NULL'))
+
+    if 'follow_up_tasks' in table_names:
+        task_columns = {col['name'] for col in inspector.get_columns('follow_up_tasks')}
+        alter_statements = []
+        if 'status' not in task_columns:
+            alter_statements.append("ALTER TABLE follow_up_tasks ADD COLUMN status VARCHAR(24) DEFAULT 'open'")
+        if 'due_date' not in task_columns:
+            alter_statements.append('ALTER TABLE follow_up_tasks ADD COLUMN due_date DATE')
+        if 'notes' not in task_columns:
+            alter_statements.append('ALTER TABLE follow_up_tasks ADD COLUMN notes TEXT')
+        if 'assigned_to_user_id' not in task_columns:
+            alter_statements.append('ALTER TABLE follow_up_tasks ADD COLUMN assigned_to_user_id INTEGER')
+        if alter_statements:
+            with db.engine.begin() as connection:
+                for stmt in alter_statements:
+                    connection.execute(text(stmt))
+
+    if 'promise_to_pay' in table_names:
+        promise_columns = {col['name'] for col in inspector.get_columns('promise_to_pay')}
+        alter_statements = []
+        if 'promised_amount' not in promise_columns:
+            alter_statements.append('ALTER TABLE promise_to_pay ADD COLUMN promised_amount FLOAT DEFAULT 0')
+        if 'promised_date' not in promise_columns:
+            alter_statements.append('ALTER TABLE promise_to_pay ADD COLUMN promised_date DATE')
+        if 'note' not in promise_columns:
+            alter_statements.append('ALTER TABLE promise_to_pay ADD COLUMN note TEXT')
+        if 'status' not in promise_columns:
+            alter_statements.append("ALTER TABLE promise_to_pay ADD COLUMN status VARCHAR(24) DEFAULT 'open'")
+        if alter_statements:
+            with db.engine.begin() as connection:
+                for stmt in alter_statements:
+                    connection.execute(text(stmt))
 
     seeded_rows = False
 

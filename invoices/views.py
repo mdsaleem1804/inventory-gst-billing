@@ -8,7 +8,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from flask_login import login_required, current_user
 from .routes import invoices_bp
-from models import db, Invoice, InvoiceItem, Product, ActivityLog, Payment, BankAccount, Customer, ReminderTemplate
+from models import db, Invoice, InvoiceItem, Product, ActivityLog, Payment, BankAccount, Customer, ReminderTemplate, Company
 from datetime import datetime, date
 from sqlalchemy import func
 
@@ -212,6 +212,44 @@ def _find_customer_for_invoice(invoice):
     return candidates[0]
 
 
+def _customer_outstanding_balance(customer_name, exclude_invoice_id=None):
+    query = Invoice.query.filter(func.lower(Invoice.customer_name) == (customer_name or '').lower())
+    if exclude_invoice_id:
+        query = query.filter(Invoice.id != exclude_invoice_id)
+    return round(
+        sum(
+            float(invoice.balance_amount if invoice.balance_amount is not None else invoice.total or 0)
+            for invoice in query.all()
+        ),
+        2,
+    )
+
+
+def _customer_credit_snapshot(customer, exclude_invoice_id=None, projected_invoice_balance=0.0):
+    if not customer:
+        return {
+            'credit_limit': 0.0,
+            'outstanding_balance': 0.0,
+            'projected_balance': 0.0,
+            'credit_over_limit': 0.0,
+        }
+
+    credit_limit = round(float(customer.credit_limit or 0), 2)
+    outstanding_balance = _customer_outstanding_balance(customer.name, exclude_invoice_id=exclude_invoice_id)
+    projected_balance = round(outstanding_balance + float(projected_invoice_balance or 0), 2)
+    return {
+        'credit_limit': credit_limit,
+        'outstanding_balance': outstanding_balance,
+        'projected_balance': projected_balance,
+        'credit_over_limit': round(max(projected_balance - credit_limit, 0.0), 2) if credit_limit > 0 else 0.0,
+    }
+
+
+def _should_block_credit_exceed():
+    company = Company.query.first()
+    return bool(getattr(company, 'credit_block_on_exceed', False)) if company else False
+
+
 def _invoice_whatsapp_message(invoice):
     pending_balance = round(float(invoice.balance_amount if invoice.balance_amount is not None else invoice.total or 0), 2)
     return (
@@ -349,6 +387,7 @@ def track_invoice_print(invoice_id):
 def view_invoice(invoice_id):
     invoice = Invoice.query.get_or_404(invoice_id)
     customer = _find_customer_for_invoice(invoice)
+    credit_snapshot = _customer_credit_snapshot(customer, exclude_invoice_id=invoice.id, projected_invoice_balance=float(invoice.balance_amount if invoice.balance_amount is not None else invoice.total or 0))
     payments = Payment.query.filter_by(invoice_id=invoice.id).order_by(Payment.payment_date.desc(), Payment.id.desc()).all()
     overpaid_amount = round(max(float(invoice.paid_amount or 0) - float(invoice.total or 0), 0.0), 2)
     can_receive_payment = _can_receive_payment(invoice)
@@ -365,6 +404,7 @@ def view_invoice(invoice_id):
         items=items,
         company=company,
         customer=customer,
+        credit_snapshot=credit_snapshot,
         payments=payments,
         overpaid_amount=overpaid_amount,
         can_receive_payment=can_receive_payment,
@@ -850,6 +890,14 @@ def crud_invoices():
                 invoice.sgst = sgst
                 _recalculate_invoice_payment(invoice)
                 overpaid_amount = round(float(invoice.paid_amount or 0) - float(invoice.total or 0), 2)
+                credit_snapshot = _customer_credit_snapshot(customer, exclude_invoice_id=invoice.id, projected_invoice_balance=invoice.balance_amount)
+                if customer and credit_snapshot['credit_limit'] > 0 and credit_snapshot['credit_over_limit'] > 0 and _should_block_credit_exceed():
+                    db.session.rollback()
+                    flash(
+                        f'Invoice blocked. Customer credit limit exceeded by {credit_snapshot["credit_over_limit"]:.2f}.',
+                        'danger',
+                    )
+                    return redirect(url_for('invoices.crud_invoices'))
                 # Remove old items
                 InvoiceItem.query.filter_by(invoice_id=invoice.id).delete()
                 db.session.flush()
@@ -867,6 +915,11 @@ def crud_invoices():
                 if overpaid_amount > 0:
                     flash(
                         f'Invoice updated. Collected amount now exceeds the revised total by {overpaid_amount:.2f}.',
+                        'warning',
+                    )
+                if customer and credit_snapshot['credit_limit'] > 0 and credit_snapshot['credit_over_limit'] > 0:
+                    flash(
+                        f'Credit limit exceeded by {credit_snapshot["credit_over_limit"]:.2f} after this invoice update.',
                         'warning',
                     )
                 flash('Invoice updated!', 'success')
@@ -896,6 +949,15 @@ def crud_invoices():
             db.session.flush()
             for item in items:
                 db.session.add(InvoiceItem(invoice_id=invoice.id, **item))
+
+            credit_snapshot = _customer_credit_snapshot(customer, projected_invoice_balance=total)
+            if customer and credit_snapshot['credit_limit'] > 0 and credit_snapshot['credit_over_limit'] > 0 and _should_block_credit_exceed():
+                db.session.rollback()
+                flash(
+                    f'Invoice blocked. Customer credit limit exceeded by {credit_snapshot["credit_over_limit"]:.2f}.',
+                    'danger',
+                )
+                return redirect(url_for('invoices.crud_invoices'))
 
             if payment_type == 'pay_now' and applied_amount > 0:
                 bill_time_notes = payment_notes
@@ -938,6 +1000,11 @@ def crud_invoices():
                 )
             )
             db.session.commit()
+            if customer and credit_snapshot['credit_limit'] > 0 and credit_snapshot['credit_over_limit'] > 0:
+                flash(
+                    f'Credit limit exceeded by {credit_snapshot["credit_over_limit"]:.2f} after this invoice.',
+                    'warning',
+                )
             if payment_type == 'pay_now':
                 if _is_non_cash_mode(payment_mode) and not payment_bank_account_id:
                     flash('Non-cash bill-time payment saved without bank account linkage. Map it later in Bank Book cleanup.', 'warning')

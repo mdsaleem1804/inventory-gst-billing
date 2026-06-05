@@ -27,6 +27,20 @@
       <div class="col-md-3"><strong>Paid:</strong> {{ (invoice.paid_amount or 0)|indian_currency }}</div>
       <div class="col-md-3"><strong>Balance:</strong> {{ (invoice.balance_amount if invoice.balance_amount is not none else invoice.total)|indian_currency }}</div>
     </div>
+    {% if credit_snapshot and credit_snapshot.credit_limit > 0 %}
+    <div class="row g-2 mt-1">
+      <div class="col-md-4"><strong>Credit Limit:</strong> {{ credit_snapshot.credit_limit|indian_currency }}</div>
+      <div class="col-md-4"><strong>Projected Balance:</strong> {{ credit_snapshot.projected_balance|indian_currency }}</div>
+      <div class="col-md-4">
+        <strong>Credit:</strong>
+        {% if credit_snapshot.credit_over_limit > 0 %}
+        <span class="badge bg-danger">Over by {{ credit_snapshot.credit_over_limit|indian_currency }}</span>
+        {% else %}
+        <span class="badge bg-success">Within Limit</span>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
     {% if overpaid_amount > 0 %}
     <div class="mt-2">
       <span class="badge text-bg-warning">Overpaid by {{ overpaid_amount|indian_currency }}</span>

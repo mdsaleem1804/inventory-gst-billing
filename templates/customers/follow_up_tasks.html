@@ -1,0 +1,172 @@
+{% extends 'base.html' %}
+{% block title %}Follow-Up Tasks{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h2 class="mb-0">Follow-Up Tasks</h2>
+    <div class="text-muted">Track collection tasks, assignees, and due dates in one place.</div>
+  </div>
+  <div>
+    <a href="{{ url_for('customers.crud_customers') }}" class="btn btn-outline-secondary">Customers</a>
+    <a href="{{ url_for('settings.communication_logs') }}" class="btn btn-outline-secondary">Communication Logs</a>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-body">
+    <form method="get" class="row g-3 align-items-end mb-4">
+      <div class="col-md-3">
+        <label class="form-label">Customer</label>
+        <select name="customer_id" class="form-select">
+          <option value="">All Customers</option>
+          {% for customer in customers %}
+          <option value="{{ customer.id }}" {% if customer_id == customer.id %}selected{% endif %}>{{ customer.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Status</label>
+        <select name="status" class="form-select">
+          <option value="">All</option>
+          <option value="open" {% if status == 'open' %}selected{% endif %}>Open</option>
+          <option value="done" {% if status == 'done' %}selected{% endif %}>Done</option>
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Assignee</label>
+        <select name="assignee_id" class="form-select">
+          <option value="">All Assignees</option>
+          {% for user in users %}
+          <option value="{{ user.id }}" {% if assignee_id == user.id %}selected{% endif %}>{{ user.username }} ({{ user.role }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">From Date</label>
+        <input type="date" name="from_date" class="form-control" value="{{ from_date }}">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">To Date</label>
+        <input type="date" name="to_date" class="form-control" value="{{ to_date }}">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Search</label>
+        <input type="text" name="search" class="form-control" value="{{ search }}" placeholder="Task, notes, or customer">
+      </div>
+      <div class="col-md-6 d-flex gap-2 align-items-end">
+        <button type="submit" class="btn btn-primary">Filter</button>
+        <a href="{{ url_for('customers.follow_up_tasks_page') }}" class="btn btn-outline-secondary">Reset</a>
+      </div>
+    </form>
+
+    <form method="post" class="row g-3 align-items-end border rounded p-3 bg-light">
+      <div class="col-md-3">
+        <label class="form-label">Customer</label>
+        <select name="customer_id" class="form-select" required>
+          <option value="">Select customer</option>
+          {% for customer in customers %}
+          <option value="{{ customer.id }}">{{ customer.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Task Title</label>
+        <input type="text" name="title" class="form-control" required placeholder="Call, visit, collect payment">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Due Date</label>
+        <input type="date" name="due_date" class="form-control">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Assignee</label>
+        <select name="assigned_to_user_id" class="form-select">
+          <option value="">Unassigned</option>
+          {% for user in users %}
+          <option value="{{ user.id }}">{{ user.username }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Link Invoice</label>
+        <input type="number" name="invoice_id" class="form-control" min="1" placeholder="Optional ID">
+      </div>
+      <div class="col-md-10">
+        <label class="form-label">Notes</label>
+        <input type="text" name="notes" class="form-control" placeholder="Task notes">
+      </div>
+      <div class="col-md-2">
+        <button type="submit" class="btn btn-success w-100">Add Task</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="table-responsive">
+  <table class="table table-bordered table-hover align-middle">
+    <thead class="table-light">
+      <tr>
+        <th>Customer</th>
+        <th>Invoice</th>
+        <th>Title</th>
+        <th>Due</th>
+        <th>Status</th>
+        <th>Assignee</th>
+        <th>Notes</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for task in tasks %}
+      {% set is_overdue = task.status != 'done' and task.due_date and task.due_date < today %}
+      {% set form_id = 'task-form-' ~ task.id %}
+      <tr>
+        <td>{{ task.customer.name if task.customer else '-' }}</td>
+        <td>{{ task.invoice.invoice_number if task.invoice else '-' }}</td>
+        <td>{{ task.title }}</td>
+        <td>
+          {{ task.due_date.strftime('%Y-%m-%d') if task.due_date else '-' }}
+          {% if is_overdue %}
+          <span class="badge bg-danger">Overdue</span>
+          {% endif %}
+        </td>
+        <td>
+          <span class="badge {% if task.status == 'done' %}bg-success{% else %}bg-warning text-dark{% endif %}">{{ task.status|title }}</span>
+        </td>
+        <td>
+          <form id="{{ form_id }}" method="post" action="{{ url_for('customers.update_follow_up_task', task_id=task.id) }}"></form>
+          <select name="assigned_to_user_id" class="form-select form-select-sm" form="{{ form_id }}">
+              <option value="">Unassigned</option>
+              {% for user in users %}
+              <option value="{{ user.id }}" {% if task.assigned_to_user_id == user.id %}selected{% endif %}>{{ user.username }}</option>
+              {% endfor %}
+            </select>
+            <select name="status" class="form-select form-select-sm mt-1" style="max-width:110px;" form="{{ form_id }}">
+              <option value="open" {% if task.status == 'open' %}selected{% endif %}>Open</option>
+              <option value="done" {% if task.status == 'done' %}selected{% endif %}>Done</option>
+            </select>
+        </td>
+        <td style="min-width:220px;">
+          <input type="text" name="notes" class="form-control form-control-sm" value="{{ task.notes or '' }}" form="{{ form_id }}">
+          <input type="date" name="due_date" class="form-control form-control-sm mt-1" value="{{ task.due_date.strftime('%Y-%m-%d') if task.due_date else '' }}" form="{{ form_id }}">
+        </td>
+        <td class="text-nowrap">
+            <button type="submit" class="btn btn-sm btn-primary" form="{{ form_id }}">Save</button>
+          {% if task.status != 'done' %}
+          <form method="post" action="{{ url_for('customers.complete_follow_up_task', customer_id=task.customer_id, task_id=task.id) }}" style="display:inline;">
+            <button type="submit" class="btn btn-sm btn-success">Done</button>
+          </form>
+          {% endif %}
+          <form method="post" action="{{ url_for('customers.delete_follow_up_task', customer_id=task.customer_id, task_id=task.id) }}" style="display:inline;">
+            <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Delete this task?');">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="8" class="text-center">No follow-up tasks found.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

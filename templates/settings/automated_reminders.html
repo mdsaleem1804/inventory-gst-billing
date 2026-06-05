@@ -1,0 +1,88 @@
+{% extends 'base.html' %}
+{% block title %}Automated Reminders{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h2 class="mb-0">Automated Reminders</h2>
+    <div class="text-muted">Prepare reminder batches for due and overdue invoices.</div>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-body">
+    <form method="post" class="row g-3 align-items-end">
+      <div class="col-md-4">
+        <label for="bucket" class="form-label">Reminder Bucket</label>
+        <select id="bucket" name="bucket" class="form-select">
+          {% for bucket in buckets %}
+          <option value="{{ bucket.key }}" {% if selected_bucket == bucket.key %}selected{% endif %}>{{ bucket.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-8">
+        <button type="submit" class="btn btn-primary">Prepare Batch</button>
+        <button type="submit" name="action" value="schedule" class="btn btn-warning">Run Scheduler Now</button>
+        <a href="{{ url_for('settings.communication_logs') }}" class="btn btn-outline-secondary">View Communication Logs</a>
+      </div>
+    </form>
+    <p class="text-muted mt-3 mb-0">
+      This runs against invoices with outstanding balance and writes reminder activity logs. If a customer has a WhatsApp number, the generated message includes a wa.me link for quick sending.
+    </p>
+  </div>
+</div>
+
+{% if prepared %}
+<div class="card">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span>Prepared Reminders</span>
+    <span class="badge bg-success">{{ prepared|length }} ready</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-bordered table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Customer</th>
+          <th>Invoice #</th>
+          <th class="text-end">Pending</th>
+          <th>WhatsApp</th>
+          <th>Message</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in prepared %}
+        <tr>
+          <td>{{ item.customer_name }}</td>
+          <td>{{ item.invoice_number }}</td>
+          <td class="text-end">{{ item.pending_amount|indian_currency }}</td>
+          <td>
+            {% if item.whatsapp_url %}
+            <a href="{{ item.whatsapp_url }}" class="btn btn-sm btn-success" target="_blank">Open WhatsApp</a>
+            {% else %}
+            <span class="badge bg-secondary">Manual only</span>
+            {% endif %}
+          </td>
+          <td style="max-width: 420px; white-space: normal;">{{ item.message }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% if scheduled_summary %}
+<div class="card mt-3">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span>Scheduler Summary</span>
+    <span class="badge bg-warning text-dark">{{ scheduled_summary.total }} processed</span>
+  </div>
+  <div class="card-body">
+    <div class="row g-3">
+      <div class="col-md-4"><strong>Reminders Logged:</strong> {{ scheduled_summary.reminders_logged }}</div>
+      <div class="col-md-4"><strong>Tasks Created:</strong> {{ scheduled_summary.tasks_created }}</div>
+      <div class="col-md-4"><strong>Promises Added:</strong> {{ scheduled_summary.promises_created }}</div>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

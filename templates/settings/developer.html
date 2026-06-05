@@ -16,8 +16,13 @@
           <input class="form-check-input" type="checkbox" role="switch" id="finance_enabled" name="finance_enabled" {% if company.finance_enabled %}checked{% endif %}>
           <label class="form-check-label" for="finance_enabled">Enable Finance Module</label>
         </div>
+        <div class="form-check form-switch mb-3">
+          <input class="form-check-input" type="checkbox" role="switch" id="credit_block_on_exceed" name="credit_block_on_exceed" {% if company.credit_block_on_exceed %}checked{% endif %}>
+          <label class="form-check-label" for="credit_block_on_exceed">Block invoice save when customer credit limit is exceeded</label>
+        </div>
         <p class="text-muted mb-3">
           When enabled, this customer sees the Finance menu and finance-oriented reports, plus the invoice billing-time payment block. When disabled, those finance pages and reports are hidden and blocked, while the normal billing flow remains available.
+          The credit block option can hard-stop invoice save when a customer goes over their configured credit limit.
         </p>
         <button type="submit" class="btn btn-primary">Save Settings</button>
       </form>
